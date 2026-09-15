@@ -147,9 +147,6 @@ Recent files, last-read pages and window placement live in
 `%USERPROFILE%\.pdfview\state.json`. Theme, zoom, page layout and sidebar state
 live in the WebView2 profile under `%LOCALAPPDATA%\pdfview`.
 
-It reads any local file you point it at, which is the point. Treat it as a
-program running as you, not as a sandbox.
-
 ## Licence
 
 MIT, see [LICENSE](LICENSE).
