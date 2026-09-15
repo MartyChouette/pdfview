@@ -33,34 +33,29 @@ jobs:
           "version=$version" >> $env:GITHUB_OUTPUT
           "Building $version"
 
-      # Each package is a folder holding dist\ plus the loose scripts, which is
+      # The package is a folder holding dist\ plus the loose scripts, which is
       # the shape install.cmd expects to find itself in.
-      - name: Build both packages
+      - name: Build the package
         shell: pwsh
         run: |
           $v = '${{ steps.version.outputs.version }}'
-          $flavours = @(
-            @{ Suffix = '';           SelfContained = 'true'  }
-            @{ Suffix = '-framework'; SelfContained = 'false' }
-          )
-          foreach ($f in $flavours) {
-            $package = "package/win-x64$($f.Suffix)"
-            $dist = "$package/dist"
+          $package = 'package'
+          $dist = "$package/dist"
 
-            dotnet publish src/PdfView/PdfView.csproj -c Release -r win-x64 `
-              --self-contained $f.SelfContained -p:Version=$v -o $dist
-            if ($LASTEXITCODE -ne 0) { throw "app build failed$($f.Suffix)" }
+          dotnet publish src/PdfView/PdfView.csproj -c Release -r win-x64 `
+            --self-contained true -p:Version=$v -o $dist
+          if ($LASTEXITCODE -ne 0) { throw 'app build failed' }
 
-            dotnet publish src/PdfThumb/PdfThumb.csproj -c Release `
-              -p:Version=$v -o "$dist/thumbnail"
-            if ($LASTEXITCODE -ne 0) { throw "thumbnail build failed$($f.Suffix)" }
+          dotnet publish src/PdfThumb/PdfThumb.csproj -c Release `
+            -p:Version=$v -o "$dist/thumbnail"
+          if ($LASTEXITCODE -ne 0) { throw 'thumbnail build failed' }
 
-            Get-ChildItem $dist -Recurse -Filter *.pdb | Remove-Item -Force
-            Copy-Item install.cmd, uninstall.cmd, LICENSE, THIRD-PARTY-NOTICES.md $package
+          Get-ChildItem $dist -Recurse -Filter *.pdb | Remove-Item -Force
+          Copy-Item install.cmd, uninstall.cmd, LICENSE, THIRD-PARTY-NOTICES.md $package
 
-            Compress-Archive -Path "$package/*" -CompressionLevel Optimal `
-              -DestinationPath "pdfview-$v-win-x64$($f.Suffix).zip"
-          }
+          Compress-Archive -Path "$package/*" -CompressionLevel Optimal `
+            -DestinationPath "pdfview-$v-win-x64.zip"
+
           Get-ChildItem *.zip | ForEach-Object {
             "{0}  {1:N1} MB" -f $_.Name, ($_.Length / 1MB)
           }
