@@ -1,0 +1,214 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+2 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+3 0 obj
+<< /Length 348 >>
+stream
+BT
+/F2 46 Tf
+1 0 0 1 72 520 Tm
+(pdfview) Tj
+/F1 16 Tf
+1 0 0 1 72 470 Tm
+(A small, quiet PDF reader for Windows) Tj
+/F1 11 Tf
+1 0 0 1 72 300 Tm
+(Continuous scrolling, real text selection, two-page spreads,) Tj
+/F1 11 Tf
+1 0 0 1 72 283 Tm
+(whole-document search, and page previews in Explorer.) Tj
+/F1 10 Tf
+1 0 0 1 72 120 Tm
+(Sample document) Tj
+ET
+endstream
+endobj
+4 0 obj
+<< /Type /Page /Parent 15 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents 3 0 R >>
+endobj
+5 0 obj
+<< /Length 743 >>
+stream
+BT
+/F2 24 Tf
+1 0 0 1 72 682 Tm
+(Reading) Tj
+/F1 11 Tf
+1 0 0 1 72 632 Tm
+(Scrolling is continuous. Pages are drawn as they come into view and) Tj
+/F1 11 Tf
+1 0 0 1 72 615 Tm
+(released when they leave, so a nine hundred page file costs about) Tj
+/F1 11 Tf
+1 0 0 1 72 598 Tm
+(what a short one does.) Tj
+/F1 11 Tf
+1 0 0 1 72 567 Tm
+(Text stays selectable and copyable, because the page is real text) Tj
+/F1 11 Tf
+1 0 0 1 72 550 Tm
+(rather than a picture of text. Links work. So does the outline, when) Tj
+/F1 11 Tf
+1 0 0 1 72 533 Tm
+(a document has one.) Tj
+/F1 11 Tf
+1 0 0 1 72 502 Tm
+(Every file reopens on the page you left it on, so picking a long) Tj
+/F1 11 Tf
+1 0 0 1 72 485 Tm
+(document back up does not mean hunting for your place.) Tj
+ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 15 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents 5 0 R >>
+endobj
+7 0 obj
+<< /Length 646 >>
+stream
+BT
+/F2 24 Tf
+1 0 0 1 72 682 Tm
+(Spreads) Tj
+/F1 11 Tf
+1 0 0 1 72 632 Tm
+(Three page layouts: one page at a time, two pages side by side, or) Tj
+/F1 11 Tf
+1 0 0 1 72 615 Tm
+(two pages with the cover on its own.) Tj
+/F1 11 Tf
+1 0 0 1 72 584 Tm
+(The last one matches how a printed book actually falls open. The) Tj
+/F1 11 Tf
+1 0 0 1 72 567 Tm
+(cover sits alone, then pages two and three face each other, then) Tj
+/F1 11 Tf
+1 0 0 1 72 550 Tm
+(four and five, and so on.) Tj
+/F1 11 Tf
+1 0 0 1 72 519 Tm
+(Page Down moves a whole spread rather than a single page, so paging) Tj
+/F1 11 Tf
+1 0 0 1 72 502 Tm
+(through a book reads the way it should.) Tj
+ET
+endstream
+endobj
+8 0 obj
+<< /Type /Page /Parent 15 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents 7 0 R >>
+endobj
+9 0 obj
+<< /Length 449 >>
+stream
+BT
+/F2 24 Tf
+1 0 0 1 72 682 Tm
+(Finding things) Tj
+/F1 11 Tf
+1 0 0 1 72 632 Tm
+(Search runs over the whole document, not just the page in front of) Tj
+/F1 11 Tf
+1 0 0 1 72 615 Tm
+(you. It reports which match you are on and how many there are.) Tj
+/F1 11 Tf
+1 0 0 1 72 584 Tm
+(Every match on a page is highlighted, with the one you are looking) Tj
+/F1 11 Tf
+1 0 0 1 72 567 Tm
+(at picked out in orange so it does not get lost among the others.) Tj
+ET
+endstream
+endobj
+10 0 obj
+<< /Type /Page /Parent 15 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents 9 0 R >>
+endobj
+11 0 obj
+<< /Length 512 >>
+stream
+BT
+/F2 24 Tf
+1 0 0 1 72 682 Tm
+(In Explorer) Tj
+/F1 11 Tf
+1 0 0 1 72 632 Tm
+(PDF files show their own first page as their icon, with a small) Tj
+/F1 11 Tf
+1 0 0 1 72 615 Tm
+(badge in the corner, instead of a generic document symbol.) Tj
+/F1 11 Tf
+1 0 0 1 72 584 Tm
+(The page is drawn by the PDF renderer built into Windows, running) Tj
+/F1 11 Tf
+1 0 0 1 72 567 Tm
+(inside the isolated host the shell uses for exactly this, so a bad) Tj
+/F1 11 Tf
+1 0 0 1 72 550 Tm
+(file cannot take Explorer down with it.) Tj
+ET
+endstream
+endobj
+12 0 obj
+<< /Type /Page /Parent 15 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents 11 0 R >>
+endobj
+13 0 obj
+<< /Length 452 >>
+stream
+BT
+/F2 24 Tf
+1 0 0 1 72 682 Tm
+(Printing) Tj
+/F1 11 Tf
+1 0 0 1 72 632 Tm
+(Printing hands the printer the document itself rather than a picture) Tj
+/F1 11 Tf
+1 0 0 1 72 615 Tm
+(of what is on screen, so the output keeps the original vectors and) Tj
+/F1 11 Tf
+1 0 0 1 72 598 Tm
+(text.) Tj
+/F1 11 Tf
+1 0 0 1 72 567 Tm
+(The printer dialog is the ordinary Windows one. Nothing is stamped) Tj
+/F1 11 Tf
+1 0 0 1 72 550 Tm
+(across the header and footer.) Tj
+ET
+endstream
+endobj
+14 0 obj
+<< /Type /Page /Parent 15 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents 13 0 R >>
+endobj
+15 0 obj
+<< /Type /Pages /Kids [4 0 R 6 0 R 8 0 R 10 0 R 12 0 R 14 0 R] /Count 6 >>
+endobj
+16 0 obj
+<< /Type /Catalog /Pages 15 0 R >>
+endobj
+xref
+0 17
+0000000000 65535 f 
+0000000009 00000 n 
+0000000079 00000 n 
+0000000154 00000 n 
+0000000552 00000 n 
+0000000689 00000 n 
+0000001482 00000 n 
+0000001619 00000 n 
+0000002315 00000 n 
+0000002452 00000 n 
+0000002951 00000 n 
+0000003089 00000 n 
+0000003652 00000 n 
+0000003791 00000 n 
+0000004294 00000 n 
+0000004433 00000 n 
+0000004524 00000 n 
+trailer
+<< /Size 17 /Root 16 0 R >>
+startxref
+4575
+%%EOF

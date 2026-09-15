@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>PdfView</RootNamespace>
+    <AssemblyName>pdfview</AssemblyName>
+    <ApplicationIcon>pdfview.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Product>pdfview</Product>
+    <AssemblyTitle>pdfview</AssemblyTitle>
+    <FileDescription>pdfview - PDF viewer</FileDescription>
+    <Company>pdfview</Company>
+    <Version>1.0.0</Version>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2792.45" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The window icon is read back out of the executable at run time. -->
+    <EmbeddedResource Include="pdfview.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The viewer front end ships beside the executable. -->
+    <Content Include="..\..\app\**\*" LinkBase="app\" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\vendor\**\*" LinkBase="vendor\" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

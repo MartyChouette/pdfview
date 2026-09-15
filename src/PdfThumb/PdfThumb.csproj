@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- The Windows 10 target framework is what brings in Windows.Data.Pdf,
+         the PDF rasteriser built into Windows. No third-party renderer. -->
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <Platforms>x64</Platforms>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <!-- COM hosting cannot be self-contained, so this half needs the .NET 8
+         runtime present. The app itself does not. -->
+    <SelfContained>false</SelfContained>
+
+    <!-- Builds PdfThumb.comhost.dll, the native shim Explorer's surrogate loads. -->
+    <EnableComHosting>true</EnableComHosting>
+
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>PdfThumb</RootNamespace>
+    <AssemblyName>PdfThumb</AssemblyName>
+    <Product>pdfview thumbnail handler</Product>
+    <FileDescription>pdfview PDF thumbnail handler</FileDescription>
+    <Version>1.0.0</Version>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Drawing.Common" Version="8.0.10" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The badge drawn over the page preview. -->
+    <EmbeddedResource Include="..\PdfView\pdfview.ico" LogicalName="PdfThumb.pdfview.ico" />
+  </ItemGroup>
+
+</Project>

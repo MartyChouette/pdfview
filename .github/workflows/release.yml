@@ -1,0 +1,88 @@
+name: Release
+
+# Push a tag like v1.0.0 and this builds both downloads and publishes the
+# release. Run it by hand from the Actions tab to just check that it builds.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Work out the version
+        id: version
+        shell: pwsh
+        run: |
+          $version = if ($env:GITHUB_REF -like 'refs/tags/v*') {
+            $env:GITHUB_REF -replace '^refs/tags/v', ''
+          } else {
+            '0.0.0-dev'
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "Building $version"
+
+      - name: Build the standalone package
+        shell: pwsh
+        run: |
+          dotnet publish src/PdfView/PdfView.csproj -c Release -r win-x64 `
+            --self-contained true -p:Version=${{ steps.version.outputs.version }} -o staging/full
+          dotnet publish src/PdfThumb/PdfThumb.csproj -c Release `
+            -p:Version=${{ steps.version.outputs.version }} -o staging/full/thumbnail
+          Copy-Item install.cmd, uninstall.cmd, LICENSE, THIRD-PARTY-NOTICES.md staging/full/
+
+      - name: Build the framework-dependent package
+        shell: pwsh
+        run: |
+          dotnet publish src/PdfView/PdfView.csproj -c Release -r win-x64 `
+            --self-contained false -p:Version=${{ steps.version.outputs.version }} -o staging/light
+          dotnet publish src/PdfThumb/PdfThumb.csproj -c Release `
+            -p:Version=${{ steps.version.outputs.version }} -o staging/light/thumbnail
+          Copy-Item install.cmd, uninstall.cmd, LICENSE, THIRD-PARTY-NOTICES.md staging/light/
+
+      # install.cmd expects to sit next to dist\, so give it that shape.
+      - name: Lay the packages out the way install.cmd expects
+        shell: pwsh
+        run: |
+          foreach ($flavour in 'full', 'light') {
+            New-Item -ItemType Directory -Force "package/$flavour/dist" | Out-Null
+            Move-Item "staging/$flavour/*" "package/$flavour/dist/"
+            Move-Item "package/$flavour/dist/install.cmd" "package/$flavour/"
+            Move-Item "package/$flavour/dist/uninstall.cmd" "package/$flavour/"
+            Move-Item "package/$flavour/dist/LICENSE" "package/$flavour/"
+            Move-Item "package/$flavour/dist/THIRD-PARTY-NOTICES.md" "package/$flavour/"
+          }
+
+      - name: Zip them
+        shell: pwsh
+        run: |
+          $v = '${{ steps.version.outputs.version }}'
+          Compress-Archive package/full/*  "pdfview-$v-win-x64.zip"
+          Compress-Archive package/light/* "pdfview-$v-win-x64-framework.zip"
+          Get-ChildItem *.zip | ForEach-Object {
+            "{0}  {1:N1} MB" -f $_.Name, ($_.Length / 1MB)
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: '*.zip'
+
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: '*.zip'
+          draft: true
+          generate_release_notes: true
