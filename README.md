@@ -42,28 +42,12 @@ it.
 Keep the folder where you put it. The registration points at that exact path, so
 if you move it, run `install.cmd` again.
 
-### Windows will warn you about it
+### SmartScreen
 
-pdfview is not code signed, so Windows treats it as an unknown program.
+pdfview is not signed, so Windows flags it as an unknown program.
 
-**The easy way round it:** right-click the zip you downloaded, choose
-**Properties**, tick **Unblock** at the bottom, then **OK**, and extract it
-after that. Windows marks downloaded files as coming from the internet and
-passes that mark on to whatever you extract. Clearing it on the zip first means
-the files inside never carry it, and nothing complains.
-
-If you extract first and run it, you get a blue box saying "Windows protected
-your PC". **More info**, then **Run anyway**.
-
-Either way you are trusting a stranger's binary on their say-so, which you
-should think about rather than wave through. If you would rather not, the source
-is all here and `build.cmd` is a short build. That is the same program, compiled
-by you.
-
-Signing would remove the warning, and it costs money a free tool does not have.
-An ordinary certificate would not even fix it straight away: SmartScreen trusts
-a publisher by reputation, which takes downloads to build up, so the prompt
-would stick around regardless until enough people had gone through it.
+Right-click the zip, **Properties**, tick **Unblock**, then extract. The files
+come out clean. If you extract first, it is **More info** then **Run anyway**.
 
 ### Requirements
 
