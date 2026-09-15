@@ -1,4 +1,4 @@
-# pdfview
+<h1><img src="docs/icon.png" width="30" align="top" alt=""> pdfview</h1>
 
 A small, quiet PDF reader for Windows. Its own window, its own icon, and it can
 be the program Windows opens PDFs with.
