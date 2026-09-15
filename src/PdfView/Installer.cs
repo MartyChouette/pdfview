@@ -59,7 +59,7 @@ static class Installer
             using (var capabilities = Registry.CurrentUser.CreateSubKey(@"Software\pdfview\Capabilities"))
             {
                 capabilities.SetValue("ApplicationName", AppName);
-                capabilities.SetValue("ApplicationDescription", "A fast, quiet PDF reader.");
+                capabilities.SetValue("ApplicationDescription", "A lightweight PDF reader.");
                 capabilities.SetValue("ApplicationIcon", icon);
                 using var files = capabilities.CreateSubKey("FileAssociations");
                 files.SetValue(".pdf", ProgId);
@@ -196,7 +196,7 @@ static class Installer
         link.SetPath(exe);
         link.SetWorkingDirectory(Path.GetDirectoryName(exe) ?? "");
         link.SetIconLocation(exe, 0);
-        link.SetDescription("A fast, quiet PDF reader");
+        link.SetDescription("A lightweight PDF reader");
 
         var target = StartMenuShortcutPath();
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);

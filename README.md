@@ -2,8 +2,7 @@
 
 <img src="docs/icon.png" width="72" align="right" alt="">
 
-A small, quiet PDF reader for Windows. Its own window, its own icon, and it can
-be the program Windows opens PDFs with.
+A lightweight PDF reader for Windows.
 
 ![pdfview showing a two-page spread](docs/screenshot.png)
 
