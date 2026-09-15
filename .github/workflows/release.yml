@@ -33,43 +33,34 @@ jobs:
           "version=$version" >> $env:GITHUB_OUTPUT
           "Building $version"
 
-      - name: Build the standalone package
-        shell: pwsh
-        run: |
-          dotnet publish src/PdfView/PdfView.csproj -c Release -r win-x64 `
-            --self-contained true -p:Version=${{ steps.version.outputs.version }} -o staging/full
-          dotnet publish src/PdfThumb/PdfThumb.csproj -c Release `
-            -p:Version=${{ steps.version.outputs.version }} -o staging/full/thumbnail
-          Copy-Item install.cmd, uninstall.cmd, LICENSE, THIRD-PARTY-NOTICES.md staging/full/
-
-      - name: Build the framework-dependent package
-        shell: pwsh
-        run: |
-          dotnet publish src/PdfView/PdfView.csproj -c Release -r win-x64 `
-            --self-contained false -p:Version=${{ steps.version.outputs.version }} -o staging/light
-          dotnet publish src/PdfThumb/PdfThumb.csproj -c Release `
-            -p:Version=${{ steps.version.outputs.version }} -o staging/light/thumbnail
-          Copy-Item install.cmd, uninstall.cmd, LICENSE, THIRD-PARTY-NOTICES.md staging/light/
-
-      # install.cmd expects to sit next to dist\, so give it that shape.
-      - name: Lay the packages out the way install.cmd expects
-        shell: pwsh
-        run: |
-          foreach ($flavour in 'full', 'light') {
-            New-Item -ItemType Directory -Force "package/$flavour/dist" | Out-Null
-            Move-Item "staging/$flavour/*" "package/$flavour/dist/"
-            Move-Item "package/$flavour/dist/install.cmd" "package/$flavour/"
-            Move-Item "package/$flavour/dist/uninstall.cmd" "package/$flavour/"
-            Move-Item "package/$flavour/dist/LICENSE" "package/$flavour/"
-            Move-Item "package/$flavour/dist/THIRD-PARTY-NOTICES.md" "package/$flavour/"
-          }
-
-      - name: Zip them
+      # Each package is a folder holding dist\ plus the loose scripts, which is
+      # the shape install.cmd expects to find itself in.
+      - name: Build both packages
         shell: pwsh
         run: |
           $v = '${{ steps.version.outputs.version }}'
-          Compress-Archive package/full/*  "pdfview-$v-win-x64.zip"
-          Compress-Archive package/light/* "pdfview-$v-win-x64-framework.zip"
+          $flavours = @(
+            @{ Suffix = '';           SelfContained = 'true'  }
+            @{ Suffix = '-framework'; SelfContained = 'false' }
+          )
+          foreach ($f in $flavours) {
+            $package = "package/win-x64$($f.Suffix)"
+            $dist = "$package/dist"
+
+            dotnet publish src/PdfView/PdfView.csproj -c Release -r win-x64 `
+              --self-contained $f.SelfContained -p:Version=$v -o $dist
+            if ($LASTEXITCODE -ne 0) { throw "app build failed$($f.Suffix)" }
+
+            dotnet publish src/PdfThumb/PdfThumb.csproj -c Release `
+              -p:Version=$v -o "$dist/thumbnail"
+            if ($LASTEXITCODE -ne 0) { throw "thumbnail build failed$($f.Suffix)" }
+
+            Get-ChildItem $dist -Recurse -Filter *.pdb | Remove-Item -Force
+            Copy-Item install.cmd, uninstall.cmd, LICENSE, THIRD-PARTY-NOTICES.md $package
+
+            Compress-Archive -Path "$package/*" -CompressionLevel Optimal `
+              -DestinationPath "pdfview-$v-win-x64$($f.Suffix).zip"
+          }
           Get-ChildItem *.zip | ForEach-Object {
             "{0}  {1:N1} MB" -f $_.Name, ($_.Length / 1MB)
           }
