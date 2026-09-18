@@ -18,22 +18,24 @@ A lightweight PDF reader for Windows.
 
 It does not edit, annotate, sign or fill in forms. It reads.
 
+![PDF icons in Explorer, each showing its own first page](docs/explorer.png)
+
 ## Install
 
-Download from [releases](https://github.com/MartyChouette/pdfview/releases),
-unzip somewhere you will keep it, run **install.cmd**.
+Download
+**[pdfview-1.0.0-win-x64.zip](https://github.com/MartyChouette/pdfview/releases/latest)**,
+72 MB with nothing else to install.
 
-Then make it the default: **Settings > Apps > Default apps**, search for
-pdfview, set it for `.pdf`. Windows does not let a program do that step itself.
+1. Right-click the zip, **Properties**, **Unblock**. It is unsigned, so Windows
+   flags it until you do.
+2. Extract it somewhere you will keep it. The registration points at that path.
+3. Run **install.cmd**. It writes only to `HKEY_CURRENT_USER` and needs no
+   admin. `uninstall.cmd` undoes it.
+4. Make it the default: **Settings > Apps > Default apps**, search for pdfview,
+   set it for `.pdf`. Windows does not let a program do that step itself.
 
-- Needs Windows 10 1809 or newer and the Edge WebView2 runtime, which is already
-  on Windows 11.
-- Unsigned, so Windows flags it. Right-click the zip, **Properties**,
-  **Unblock**, then extract.
-- Keep the folder where you put it. The registration points at that path.
-
-`install.cmd` writes only to `HKEY_CURRENT_USER` and needs no admin.
-`uninstall.cmd` undoes it.
+Needs Windows 10 1809 or newer and the Edge WebView2 runtime, which is already
+on Windows 11.
 
 <details>
 <summary><b>Shortcuts</b></summary>

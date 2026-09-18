@@ -184,6 +184,7 @@ function setEnabled(on) {
   el.pageNum.disabled = !on;
   el.zoom.disabled = !on;
   el.spread.disabled = !on;
+  queueFit();   // the page count and title change width when a document opens
 }
 
 /* ================= page layout ================= */
@@ -1320,6 +1321,68 @@ const onResize = debounce(() => {
   if (state.pages.length && (state.fitMode === 'width' || state.fitMode === 'page')) applyFit();
 }, 150);
 window.addEventListener('resize', onResize);
+
+/* ================= toolbar overflow ================= */
+
+/* A narrow window used to push the right-hand buttons off the edge, where they
+   were clipped with nothing to say they were there. They now move into a menu,
+   least useful first. The buttons themselves move, so their listeners and
+   their disabled state come with them. */
+
+const RIGHT_ORDER = ['btn-find', 'btn-print', 'btn-download', 'btn-invert', 'btn-theme', 'btn-help'];
+const OVERFLOW_ORDER = ['btn-help', 'btn-theme', 'btn-invert', 'btn-download', 'btn-print', 'btn-find'];
+
+const toolbar = document.querySelector('.toolbar');
+const rightGroup = document.querySelector('.tb-group.right');
+const overflowBtn = $('btn-overflow');
+const overflowWrap = overflowBtn.parentElement;
+const overflowMenu = $('overflow-menu');
+
+function fitToolbar() {
+  for (const id of RIGHT_ORDER) rightGroup.insertBefore($(id), overflowWrap);
+  el.title.hidden = false;
+  overflowMenu.hidden = true;
+  overflowBtn.hidden = true;
+
+  const tooWide = () => toolbar.scrollWidth > toolbar.clientWidth + 1;
+  if (!tooWide()) return;
+
+  /* The title goes first. Squeezed down it shows half a letter, and the window
+     title bar carries the same name anyway. */
+  el.title.hidden = true;
+  if (!tooWide()) return;
+
+  overflowBtn.hidden = false;
+  for (const id of OVERFLOW_ORDER) {
+    if (!tooWide()) break;
+    overflowMenu.prepend($(id));
+  }
+}
+
+let fitQueued = false;
+function queueFit() {
+  if (fitQueued) return;
+  fitQueued = true;
+  requestAnimationFrame(() => {
+    fitQueued = false;
+    fitToolbar();
+  });
+}
+
+window.addEventListener('resize', queueFit);
+
+overflowBtn.addEventListener('click', (ev) => {
+  ev.stopPropagation();
+  overflowMenu.hidden = !overflowMenu.hidden;
+});
+
+overflowMenu.addEventListener('click', () => { overflowMenu.hidden = true; });
+
+document.addEventListener('click', (ev) => {
+  if (!overflowMenu.hidden && !overflowWrap.contains(ev.target)) overflowMenu.hidden = true;
+});
+
+queueFit();
 
 /* ================= startup ================= */
 

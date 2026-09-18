@@ -12,6 +12,7 @@
   --find: rgba(255, 196, 0, .45);
   --find-active: rgba(255, 128, 0, .75);
   --font: system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color-scheme: light;
 }
 
 [data-theme="dark"] {
@@ -24,6 +25,7 @@
   --accent: #5b91ff;
   --accent-soft: #24365c;
   --page-shadow: 0 1px 3px rgba(0, 0, 0, .5), 0 8px 24px rgba(0, 0, 0, .45);
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -117,7 +119,7 @@ button, input, select { font-family: inherit; font-size: inherit; color: inherit
 
 .page-total { color: var(--text-dim); min-width: 40px; }
 
-#zoom-select {
+#zoom-select, #spread-select {
   height: 28px;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -162,6 +164,21 @@ button, input, select { font-family: inherit; font-size: inherit; color: inherit
 .menu-item .mi-name { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .menu-item .mi-meta { margin-left: auto; color: var(--text-dim); font-size: 12px; white-space: nowrap; }
 .menu-empty { padding: 10px; color: var(--text-dim); }
+
+/* ---------- toolbar overflow ---------- */
+
+/* Buttons move in here when the window is too narrow to hold them all. */
+.menu.compact { left: auto; right: 0; min-width: 0; padding: 4px; }
+
+.menu.compact .icon-btn {
+  justify-content: flex-start;
+  width: 100%;
+  height: 32px;
+  padding: 0 9px;
+}
+
+.icon-btn .lbl { display: none; }
+.menu.compact .icon-btn .lbl { display: inline; white-space: nowrap; }
 
 /* ---------- find bar ---------- */
 

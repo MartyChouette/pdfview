@@ -72,22 +72,34 @@
   <div class="tb-group right">
     <button id="btn-find" class="icon-btn" title="Find in document (Ctrl+F)" aria-label="Find">
       <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg>
+      <span class="lbl">Find</span>
     </button>
     <button id="btn-print" class="icon-btn" title="Print" aria-label="Print">
       <svg viewBox="0 0 24 24"><path d="M7 9V4h10v5"/><path d="M5 9h14v7H5z"/><path d="M7 14h10v6H7z"/></svg>
+      <span class="lbl">Print</span>
     </button>
     <button id="btn-download" class="icon-btn" title="Save a copy" aria-label="Save a copy">
       <svg viewBox="0 0 24 24"><path d="M12 4v10"/><path d="M8 11l4 4 4-4"/><path d="M5 19h14"/></svg>
+      <span class="lbl">Save a copy</span>
     </button>
     <button id="btn-invert" class="icon-btn" title="Invert page colours (I)" aria-label="Invert page colours">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></svg>
+      <span class="lbl">Invert colours</span>
     </button>
     <button id="btn-theme" class="icon-btn" title="Toggle theme (T)" aria-label="Toggle theme">
       <svg viewBox="0 0 24 24"><path d="M20 14a8 8 0 1 1-10-10 8 8 0 0 0 10 10z"/></svg>
+      <span class="lbl">Theme</span>
     </button>
     <button id="btn-help" class="icon-btn" title="Keyboard shortcuts (?)" aria-label="Shortcuts">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3 2.5v1.5"/><circle cx="12.5" cy="17" r=".6" fill="currentColor"/></svg>
+      <span class="lbl">Shortcuts</span>
     </button>
+    <div class="menu-wrap">
+      <button id="btn-overflow" class="icon-btn" title="More" aria-label="More" hidden>
+        <svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.3" fill="currentColor" stroke="none"/></svg>
+      </button>
+      <div id="overflow-menu" class="menu compact" hidden></div>
+    </div>
   </div>
 </header>
 
