@@ -1,0 +1,927 @@
+<title>pdfview Internals</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo:ital,wght@0,400;0,600;0,800;1,400;1,800&family=JetBrains+Mono:wght@400;700&display=swap">
+
+<style>
+/* --------------------------------------------------------------------------
+   pdfview - internals and design record
+   House style from design/HOUSE_STYLE.md: a 1993 strategy guide, four-colour on
+   coated stock. Single theme on purpose; a printed page has one ground, and
+   every colour here is painted explicitly so it holds wherever it lands.
+   -------------------------------------------------------------------------- */
+:root {
+  --stock:   #FDFBF4;
+  --stock-2: #F0EBDD;
+  --ink:     #16161A;
+  --ink-2:   #5A5A63;
+
+  --red:   #D62828;   /* GAP. the thing that is missing */
+  --gold:  #F2B417;   /* CAUTION. present, will surprise you */
+  --green: #17804A;   /* GO. verified, works as described */
+  --blue:  #0B5FCE;   /* navigation and links only */
+  --navy:  #12233D;
+
+  --shadow: 6px 6px 0 var(--ink);
+  --shadow-sm: 4px 4px 0 var(--ink);
+
+  --display: "Anton", "Arial Narrow", Impact, sans-serif;
+  --body: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--navy);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+.page {
+  max-width: 1080px;
+  margin: 0 auto;
+  background: var(--stock);
+  border-left: 3px solid var(--ink);
+  border-right: 3px solid var(--ink);
+}
+
+/* ---------- masthead ---------- */
+.masthead {
+  background: var(--navy); color: #fff;
+  padding: 28px 40px 0;
+  border-bottom: 6px solid var(--red);
+  position: relative; overflow: hidden;
+}
+.masthead::after {
+  content: ""; position: absolute; inset: auto 0 0 0; height: 46px;
+  background: repeating-linear-gradient(-45deg, var(--gold) 0 14px, var(--navy) 14px 28px);
+  opacity: .22;
+}
+.kicker {
+  font-family: var(--mono); font-size: 11px; font-weight: 700;
+  letter-spacing: .22em; text-transform: uppercase;
+  color: var(--gold); margin: 0 0 10px;
+}
+.masthead h1 {
+  font-family: var(--display); font-size: clamp(44px, 9vw, 92px);
+  line-height: .88; margin: 0 0 14px; text-transform: uppercase;
+  letter-spacing: .01em; transform: skewX(-7deg);
+  text-shadow: 5px 5px 0 var(--red);
+}
+.masthead .deck {
+  font-size: 18px; font-weight: 600; max-width: 56ch;
+  margin: 0 0 26px; color: #E8E4D8; position: relative; z-index: 1;
+}
+.flags { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 30px; position: relative; z-index: 1; }
+.flag {
+  font-family: var(--mono); font-size: 10px; font-weight: 700;
+  letter-spacing: .12em; text-transform: uppercase;
+  background: var(--stock); color: var(--ink);
+  border: 2px solid var(--ink); padding: 5px 9px;
+}
+.flag.on  { background: var(--green); color: #fff; }
+.flag.off { background: var(--gold); }
+.flag.bad { background: var(--red); color: #fff; }
+
+/* ---------- body shell ---------- */
+.shell { display: grid; grid-template-columns: 208px minmax(0, 1fr); gap: 40px; padding: 36px 40px 72px; }
+@media (max-width: 880px) {
+  .shell { grid-template-columns: minmax(0, 1fr); gap: 28px; padding: 28px 20px 56px; }
+  .page { border-left: 0; border-right: 0; }
+}
+
+/* ---------- contents rail ---------- */
+.rail { position: sticky; top: 20px; align-self: start; }
+@media (max-width: 880px) { .rail { position: static; } }
+.rail-head {
+  font-family: var(--display); font-size: 20px; text-transform: uppercase;
+  background: var(--ink); color: var(--stock); padding: 7px 12px; margin: 0;
+  letter-spacing: .03em;
+}
+.rail ol {
+  list-style: none; margin: 0; padding: 0;
+  border: 3px solid var(--ink); border-top: 0; box-shadow: var(--shadow-sm); background: #fff;
+}
+.rail li { border-bottom: 1px solid var(--stock-2); margin: 0; }
+.rail li:last-child { border-bottom: 0; }
+.rail a { display: flex; gap: 10px; padding: 9px 12px; font-size: 13px; font-weight: 600; color: var(--ink); text-decoration: none; }
+.rail a:hover, .rail a:focus-visible { background: var(--gold); }
+.rail .n { font-family: var(--mono); font-size: 11px; color: var(--ink-2); flex: none; padding-top: 2px; }
+
+/* ---------- section banners ---------- */
+.banner { margin: 56px 0 8px; background: var(--navy); box-shadow: var(--shadow); transform: skewX(-7deg); }
+.banner:first-child { margin-top: 0; }
+.banner h2 {
+  transform: skewX(7deg); font-family: var(--display);
+  font-size: clamp(26px, 4.4vw, 40px); text-transform: uppercase; color: #fff;
+  margin: 0; padding: 12px 22px; line-height: 1.05; letter-spacing: .02em;
+  text-wrap: balance;
+}
+.banner.red  { background: var(--red); }
+.banner.gold { background: var(--gold); }
+.banner.gold h2 { color: var(--ink); }
+.banner-note { font-weight: 600; color: var(--ink-2); font-size: 15px; margin: 18px 0 22px; max-width: 62ch; }
+
+h3 { font-family: var(--display); font-size: 24px; text-transform: uppercase; margin: 36px 0 10px; letter-spacing: .02em; line-height: 1.12; text-wrap: balance; }
+h4 { font-size: 16px; font-weight: 800; margin: 26px 0 8px; }
+p { margin: 0 0 15px; max-width: 68ch; }
+strong { font-weight: 800; }
+a { color: var(--blue); }
+a:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+
+/* ---------- numbered step panels ---------- */
+.step { margin: 34px 0; }
+.step-head { display: flex; align-items: stretch; margin-bottom: 14px; box-shadow: var(--shadow-sm); }
+.step-n {
+  font-family: var(--display); font-size: 30px; line-height: 1;
+  background: var(--red); color: #fff; display: flex; align-items: center; justify-content: center;
+  width: 58px; flex: none; border: 3px solid var(--ink); border-right: 0;
+}
+.step-title {
+  font-family: var(--display); font-size: clamp(18px, 2.4vw, 24px);
+  text-transform: uppercase; letter-spacing: .02em; background: #fff;
+  border: 3px solid var(--ink); padding: 11px 16px; display: flex; align-items: center; flex: 1; line-height: 1.1;
+}
+.step-cost {
+  font-family: var(--mono); font-size: 13px; font-weight: 700;
+  background: var(--stock-2); border: 3px solid var(--ink); border-left: 0;
+  display: flex; align-items: center; padding: 0 14px; flex: none;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 620px) { .step-cost { display: none; } }
+
+/* ---------- the three callout panels ----------
+   One object. Only the strip colour and the label change between them. */
+.panel { border: 3px solid var(--ink); background: #fff; box-shadow: var(--shadow); margin: 24px 0; max-width: 68ch; }
+.panel > .ph {
+  font-family: var(--display); font-size: 17px; letter-spacing: .08em; text-transform: uppercase;
+  padding: 7px 16px; border-bottom: 3px solid var(--ink);
+  background: var(--tone); color: var(--tone-fg); margin: 0;
+}
+.panel > .pb { padding: 15px 16px; }
+.panel > .pb > :last-child { margin-bottom: 0; }
+.panel.try   { --tone: var(--green); --tone-fg: #fff; }
+.panel.watch { --tone: var(--gold);  --tone-fg: var(--ink); }
+.panel.owes  { --tone: var(--red);   --tone-fg: #fff; }
+
+/* ---------- verdict marks ----------
+   Shape before colour, per design/SYMBOL_STANDARDS.md: circle works, triangle
+   will surprise you, square is missing. Greyscale still separates them, and
+   gold appears only as a fill behind an ink keyline. */
+.v { display: inline-flex; align-items: center; gap: 7px; font-weight: 800; font-size: 13.5px; }
+.v svg { width: 17px; height: 17px; flex: none; display: block; }
+
+/* ---------- figures ----------
+   A frame means it is real. Captures get the 3px border; explanatory drawings
+   float unframed. */
+figure { margin: 30px 0; max-width: 100%; }
+.frame { border: 3px solid var(--ink); background: #fff; box-shadow: var(--shadow); }
+.frame > .fh {
+  font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: .16em;
+  text-transform: uppercase; background: var(--ink); color: var(--stock); padding: 5px 12px; margin: 0;
+}
+.frame > .fb { padding: 16px; overflow-x: auto; }
+.frame > .fb > svg { width: 100%; min-width: 660px; height: auto; display: block; color: var(--ink); }
+.plain { overflow-x: auto; margin: 30px 0; }
+.plain svg { width: 100%; min-width: 680px; height: auto; display: block; color: var(--ink); }
+figcaption {
+  font-size: 13.5px; font-weight: 600; color: var(--ink);
+  background: var(--gold); border: 3px solid var(--ink); border-top: 0;
+  padding: 9px 12px; box-shadow: var(--shadow); max-width: 100%;
+}
+
+.shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 26px; margin: 26px 0; align-items: start; }
+.shots figure { margin: 0; }
+.shots img { display: block; width: 100%; height: auto; }
+.shots img.zoom { image-rendering: pixelated; }
+
+/* ---------- tables ---------- */
+.scroll { overflow-x: auto; margin: 22px 0; border: 3px solid var(--ink); box-shadow: var(--shadow); background: #fff; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; min-width: 540px; }
+th, td { text-align: left; padding: 9px 13px; vertical-align: top; }
+thead th { font-family: var(--display); font-size: 13px; letter-spacing: .1em; text-transform: uppercase; background: var(--ink); color: var(--stock); }
+tbody tr { border-bottom: 1px solid var(--stock-2); }
+tbody tr:last-child { border-bottom: 0; }
+tbody tr:nth-child(even) { background: #FAF7EE; }
+td.num, th.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
+td code { white-space: nowrap; }
+
+code { font-family: var(--mono); font-size: .86em; background: var(--stock-2); padding: 1px 4px; }
+pre {
+  font-family: var(--mono); font-size: 12.5px; line-height: 1.6;
+  background: var(--navy); color: #EDEAE0; border: 3px solid var(--ink);
+  box-shadow: var(--shadow); padding: 14px 16px; overflow-x: auto; margin: 20px 0; max-width: 68ch;
+}
+pre code { background: none; padding: 0; color: inherit; }
+
+blockquote {
+  margin: 26px 0; padding: 18px 20px; max-width: 68ch;
+  background: var(--gold); border: 3px solid var(--ink); box-shadow: var(--shadow);
+  font-family: var(--display); font-size: 21px; line-height: 1.25; text-transform: uppercase;
+}
+blockquote p { margin: 0; max-width: none; }
+blockquote .small { font-family: var(--body); font-size: 14px; text-transform: none; font-weight: 600; margin-top: 10px; line-height: 1.55; }
+
+ul, ol { margin: 0 0 15px; padding-left: 22px; max-width: 68ch; }
+li { margin-bottom: 7px; }
+
+.gapid {
+  font-family: var(--display); font-size: 15px; letter-spacing: .06em;
+  background: var(--red); color: #fff; border: 3px solid var(--ink);
+  padding: 2px 9px; margin-right: 10px; display: inline-block; vertical-align: 3px;
+}
+
+/* ---------- chart legend ----------
+   Nine segments, so the labels go in a numbered legend below rather than as
+   arrows on the drawing. */
+.legend { list-style: none; padding: 0; margin: 20px 0 0; max-width: none;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 0 30px; }
+.legend li { display: flex; gap: 10px; align-items: baseline; font-size: 14px;
+  border-bottom: 1px solid var(--stock-2); padding: 7px 0; margin: 0; }
+.legend .ln {
+  font-family: var(--display); font-size: 13px; background: var(--ink); color: var(--stock);
+  min-width: 22px; text-align: center; flex: none; padding: 1px 0; align-self: center;
+}
+.legend .lms { font-family: var(--mono); font-weight: 700; margin-left: auto; flex: none;
+  font-variant-numeric: tabular-nums; padding-left: 12px; }
+
+footer {
+  background: var(--navy); color: #D8D4C8; padding: 24px 40px;
+  border-top: 6px solid var(--red); font-family: var(--mono); font-size: 11.5px; line-height: 1.9;
+}
+footer strong { color: var(--gold); }
+footer a { color: var(--gold); }
+footer p { max-width: 82ch; }
+
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+@media print { body { background: #fff; } .page { border: 0; } .rail { display: none; } }
+</style>
+
+<div class="page">
+
+<header class="masthead">
+  <p class="kicker">pdfview &middot; Internals &amp; Design Record &middot; No. 1</p>
+  <h1>pdfview</h1>
+  <p class="deck">A PDF reader that borrows both of its renderers from software
+  already on the machine, and spends its own code on the two things nobody else
+  will do for it: the window, and getting along with Explorer.</p>
+  <div class="flags">
+    <span class="flag">Verified 2026-09-18</span>
+    <span class="flag on">Warm start 915 ms</span>
+    <span class="flag off">2 floor costs, 433 ms</span>
+    <span class="flag bad">1 gap open</span>
+  </div>
+</header>
+
+<div class="shell">
+
+<nav class="rail" aria-label="Contents">
+  <p class="rail-head">Contents</p>
+  <ol>
+    <li><a href="#shape"><span class="n">00</span><span>The shape of it</span></a></li>
+    <li><a href="#choices"><span class="n">01</span><span>Choices that decided the rest</span></a></li>
+    <li><a href="#windows"><span class="n">02</span><span>Windows is the other user</span></a></li>
+    <li><a href="#walk"><span class="n">03</span><span>Walkthrough: one launch</span></a></li>
+    <li><a href="#changed"><span class="n">04</span><span>What changed</span></a></li>
+    <li><a href="#paths"><span class="n">05</span><span>Pathways not taken</span></a></li>
+    <li><a href="#measure"><span class="n">06</span><span>Measure it yourself</span></a></li>
+  </ol>
+</nav>
+
+<main>
+
+<p>Every number on this page was read off one machine on <strong>2026-09-18</strong>,
+opening <code>docs/sample.pdf</code>, a six-page document. Nothing here is an
+intention. Where something is intended and not built it carries a gap mark and
+says so.</p>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="m-go" viewBox="0 0 50 50">
+      <circle cx="25" cy="25" r="19" fill="#17804A" stroke="#16161A" stroke-width="4"/>
+      <path d="M16 26 L22 32 L34 19" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="square"/>
+    </symbol>
+    <symbol id="m-caution" viewBox="0 0 50 50">
+      <path d="M25 6 L46 43 L4 43 Z" fill="#F2B417" stroke="#16161A" stroke-width="4" stroke-linejoin="miter"/>
+      <path d="M25 19 L25 31" fill="none" stroke="#16161A" stroke-width="5" stroke-linecap="square"/>
+      <rect x="22.5" y="35" width="5" height="4" fill="#16161A"/>
+    </symbol>
+    <symbol id="m-gap" viewBox="0 0 50 50">
+      <rect x="7" y="7" width="36" height="36" fill="#D62828" stroke="#16161A" stroke-width="4"/>
+      <path d="M17 17 L33 33 M33 17 L17 33" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="square"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="banner"><h2 id="shape">The shape of it</h2></div>
+<p class="banner-note">Three processes, two PDF renderers, and one of them is not
+even in the same process tree as the app. Drawn because a paragraph describing
+how they connect is a diagram that has not been drawn yet.</p>
+
+<div class="plain">
+<svg viewBox="0 0 880 400" role="img" aria-label="Two independent process paths. The viewer path runs pdfview.exe hosting a WebView2 browser process that loads pdf.js. The thumbnail path runs Explorer, the shell's isolated surrogate, and PdfThumb using the Windows PDF renderer.">
+  <!-- band 1: the viewer -->
+  <text x="0" y="20" font-family="'JetBrains Mono',monospace" font-size="12" font-weight="700" letter-spacing="2.4" fill="#5A5A63">THE WINDOW</text>
+
+  <rect x="0" y="34" width="196" height="94" fill="#fff" stroke="#16161A" stroke-width="3"/>
+  <text x="14" y="60" font-family="Anton,Impact,sans-serif" font-size="19" fill="#16161A">pdfview.exe</text>
+  <text x="14" y="82" font-family="Archivo,Arial,sans-serif" font-size="13" fill="#16161A">WinForms host window</text>
+  <text x="14" y="101" font-family="Archivo,Arial,sans-serif" font-size="13" fill="#16161A">Shell, Ipc, AppState,</text>
+  <text x="14" y="118" font-family="Archivo,Arial,sans-serif" font-size="13" fill="#16161A">WebHost, PrintForm</text>
+
+  <path d="M196 81 L300 81" stroke="#16161A" stroke-width="3" fill="none"/>
+  <path d="M300 81 L288 75 L288 87 Z" fill="#16161A"/>
+  <text x="206" y="73" font-family="'JetBrains Mono',monospace" font-size="11" font-weight="700" fill="#0B5FCE">hosts</text>
+
+  <rect x="302" y="34" width="208" height="94" fill="#fff" stroke="#16161A" stroke-width="3"/>
+  <text x="316" y="60" font-family="Anton,Impact,sans-serif" font-size="19" fill="#16161A">msedgewebview2.exe</text>
+  <text x="316" y="82" font-family="Archivo,Arial,sans-serif" font-size="13" fill="#16161A">Edge, minus its own UI</text>
+  <text x="316" y="101" font-family="Archivo,Arial,sans-serif" font-size="13" fill="#16161A">18 child processes at</text>
+  <text x="316" y="118" font-family="Archivo,Arial,sans-serif" font-size="13" fill="#16161A">one open document</text>
+
+  <path d="M510 81 L614 81" stroke="#16161A" stroke-width="3" fill="none"/>
+  <path d="M614 81 L602 75 L602 87 Z" fill="#16161A"/>
+  <text x="520" y="73" font-family="'JetBrains Mono',monospace" font-size="11" font-weight="700" fill="#0B5FCE">runs</text>
+
+  <rect x="616" y="34" width="196" height="94" fill="#17804A" stroke="#16161A" stroke-width="4"/>
+  <text x="630" y="60" font-family="Anton,Impact,sans-serif" font-size="19" fill="#fff">viewer.js</text>
+  <text x="630" y="82" font-family="Archivo,Arial,sans-serif" font-size="13" fill="#fff">pdf.js, 1.4 MB worker</text>
+  <text x="630" y="101" font-family="Archivo,Arial,sans-serif" font-size="13" fill="#fff">Scroll, text, links,</text>
+  <text x="630" y="118" font-family="Archivo,Arial,sans-serif" font-size="13" fill="#fff">search, thumbnails</text>
+
+  <!-- the origin, drawn under the viewer band -->
+  <path d="M98 128 L98 168 L404 168 L404 128" stroke="#16161A" stroke-width="3" fill="none" stroke-dasharray="9 6"/>
+  <rect x="150" y="152" width="204" height="30" fill="#F2B417" stroke="#16161A" stroke-width="3"/>
+  <text x="162" y="173" font-family="'JetBrains Mono',monospace" font-size="12.5" font-weight="700" fill="#16161A">https://pdfview.local</text>
+  <text x="418" y="173" font-family="Archivo,Arial,sans-serif" font-size="13" font-style="italic" fill="#16161A">answered in process. no socket.</text>
+
+  <!-- divider -->
+  <path d="M0 214 L880 214" stroke="#16161A" stroke-width="3" fill="none"/>
+
+  <!-- band 2: the thumbnail -->
+  <text x="0" y="248" font-family="'JetBrains Mono',monospace" font-size="12" font-weight="700" letter-spacing="2.4" fill="#5A5A63">THE ICON</text>
+
+  <rect x="0" y="262" width="164" height="90" fill="#fff" stroke="#16161A" stroke-width="3"/>
+  <text x="14" y="288" font-family="Anton,Impact,sans-serif" font-size="19" fill="#16161A">explorer.exe</text>
+  <text x="14" y="310" font-family="Archivo,Arial,sans-serif" font-size="13" fill="#16161A">Not our process.</text>
+  <text x="14" y="329" font-family="Archivo,Arial,sans-serif" font-size="13" fill="#16161A">Draws the badge</text>
+  <text x="14" y="346" font-family="Archivo,Arial,sans-serif" font-size="13" fill="#16161A">itself, at paint time.</text>
+
+  <path d="M164 300 L262 300" stroke="#16161A" stroke-width="3" fill="none"/>
+  <path d="M262 300 L250 294 L250 306 Z" fill="#16161A"/>
+
+  <rect x="264" y="262" width="186" height="90" fill="#fff" stroke="#16161A" stroke-width="3"/>
+  <text x="278" y="288" font-family="Anton,Impact,sans-serif" font-size="19" fill="#16161A">dllhost.exe</text>
+  <text x="278" y="310" font-family="Archivo,Arial,sans-serif" font-size="13" fill="#16161A">The shell's isolated,</text>
+  <text x="278" y="329" font-family="Archivo,Arial,sans-serif" font-size="13" fill="#16161A">low-privilege host.</text>
+  <text x="278" y="346" font-family="Archivo,Arial,sans-serif" font-size="13" fill="#16161A">Windows supplies it.</text>
+
+  <path d="M450 300 L548 300" stroke="#16161A" stroke-width="3" fill="none"/>
+  <path d="M548 300 L536 294 L536 306 Z" fill="#16161A"/>
+
+  <rect x="550" y="262" width="186" height="90" fill="#12233D" stroke="#16161A" stroke-width="4"/>
+  <text x="564" y="288" font-family="Anton,Impact,sans-serif" font-size="19" fill="#fff">PdfThumb.dll</text>
+  <text x="564" y="310" font-family="Archivo,Arial,sans-serif" font-size="13" fill="#fff">Windows.Data.Pdf,</text>
+  <text x="564" y="329" font-family="Archivo,Arial,sans-serif" font-size="13" fill="#fff">the rasteriser already</text>
+  <text x="564" y="346" font-family="Archivo,Arial,sans-serif" font-size="13" fill="#fff">in the operating system</text>
+
+  <text x="752" y="296" font-family="Archivo,Arial,sans-serif" font-size="13" font-style="italic" fill="#16161A">No pdf.js</text>
+  <text x="752" y="314" font-family="Archivo,Arial,sans-serif" font-size="13" font-style="italic" fill="#16161A">down here.</text>
+  <text x="752" y="332" font-family="Archivo,Arial,sans-serif" font-size="13" font-style="italic" fill="#16161A">See 01.</text>
+</svg>
+</div>
+
+<p>The two halves never speak. The app can be closed, uninstalled or crashing and
+Explorer still draws page previews, because the thumbnail handler is a COM server
+Windows loads into its own sandbox on demand. That separation is the reason the
+thumbnail half gets a different PDF renderer, and it is the first real design
+choice on the list.</p>
+
+<div class="banner"><h2 id="choices">Choices that decided the rest</h2></div>
+<p class="banner-note">Four decisions, each of which closed off a set of other
+decisions. Everything downstream is a consequence rather than a preference.</p>
+
+<h3>Neither renderer is ours</h3>
+
+<p>The window runs <strong>pdf.js inside WebView2</strong>. The thumbnail handler
+runs <strong>Windows.Data.Pdf</strong>, the rasteriser built into Windows 10 and
+11. Two different PDF engines in one product looks like an accident and is not.</p>
+
+<p>The handler is loaded into a process Windows owns, alongside every other
+thumbnail provider on the machine, with a hard time budget and no UI thread of
+its own. Putting a 1.4 MB JavaScript engine and a browser process in there to
+draw a 96-pixel square would be indefensible. Windows.Data.Pdf is already
+resident, takes a stream, and hands back a bitmap. It is the right tool in that
+seat and the wrong one in the window, where selectable text, links, outlines and
+whole-document search are the entire point and Windows.Data.Pdf offers none of
+them.</p>
+
+<div class="panel try">
+  <p class="ph">Verified 2026-09-18</p>
+  <div class="pb">
+    <p>Both paths were driven directly, not inferred. <code>Renderer.RenderFile</code>
+    called through reflection on the shipped <code>PdfThumb.dll</code> returns a
+    198&times;256 bitmap for <code>sample.pdf</code> at <code>cx=256</code>. The
+    same file through <code>IShellItemImageFactory::GetImage</code> with
+    <code>SIIGBF_THUMBNAILONLY</code> returns the identical image, which is how we
+    know the shell is handing back exactly what the handler drew.</p>
+  </div>
+</div>
+
+<h3>Nothing listens on a socket</h3>
+
+<p>The viewer is a web page, so it needs an origin. It does not get a local web
+server. <code>WebHost</code> registers a <code>WebResourceRequested</code> filter
+for <code>https://pdfview.local/*</code> and answers every request in process:
+static files out of <code>app/</code> and <code>vendor/</code>, the document
+itself through <code>/api/file</code> with real HTTP range support, and a handful
+of endpoints that put up native dialogs.</p>
+
+<p>The payoff is that no other program on the machine can reach any of it. There
+is no port to find, no loopback binding for a firewall to ask about, and no
+window where a different process could fetch the document you have open. The cost
+is that a modal dialog cannot run inside the request handler without wedging the
+browser process, so <code>/api/open</code> and <code>/api/save</code> take a
+deferral and answer once the dialog closes.</p>
+
+<h3>One process, many windows</h3>
+
+<p>A second launch takes a named mutex, finds it held, writes its file path down a
+named pipe to the first instance and exits. Every document therefore lives in one
+process and one taskbar group. If the mutex holder is gone or wedged the second
+launch carries on and opens its own window rather than refusing to start.</p>
+
+<h3>HKCU only, and no surrogate of our own</h3>
+
+<p>Registration writes to <code>HKEY_CURRENT_USER</code> and nowhere else, so
+installing needs no administrator and uninstalling is a subtree delete. The
+thumbnail CLSID gets an <code>InprocServer32</code> and no <code>AppID</code>,
+which is deliberate: Windows already runs stream-based thumbnail handlers in its
+own isolated low-privilege host, and declaring a <code>DllSurrogate</code> would
+opt out of that in favour of a plain <code>dllhost</code>.</p>
+
+<div class="scroll">
+<table>
+  <thead>
+    <tr><th>Decision</th><th>What it bought</th><th>What it cost</th><th>State</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>pdf.js in WebView2 for the window</td>
+      <td>Selectable text, links, outline, whole-document search</td>
+      <td>A browser process, and 433 ms of the launch</td>
+      <td><span class="v"><svg><use href="#m-go"/></svg>Works</span></td>
+    </tr>
+    <tr>
+      <td>Windows.Data.Pdf for thumbnails</td>
+      <td>A handler small enough to live in the shell's sandbox</td>
+      <td>Two PDF engines to reason about</td>
+      <td><span class="v"><svg><use href="#m-go"/></svg>Works</span></td>
+    </tr>
+    <tr>
+      <td>In-process origin, no socket</td>
+      <td>Nothing else on the machine can reach the document</td>
+      <td>Dialogs need deferrals</td>
+      <td><span class="v"><svg><use href="#m-go"/></svg>Works</span></td>
+    </tr>
+    <tr>
+      <td>One process, many windows</td>
+      <td>One taskbar group, shared browser process</td>
+      <td>A wedged first instance is a visible failure mode</td>
+      <td><span class="v"><svg><use href="#m-caution"/></svg>Surprises</span></td>
+    </tr>
+    <tr>
+      <td>Self-contained publish</td>
+      <td>No .NET install for the user</td>
+      <td>148 MB, of which 50.5 MB is never loaded</td>
+      <td><span class="v"><svg><use href="#m-gap"/></svg>Gap</span></td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<div class="banner red"><h2 id="windows">Windows is the other user</h2></div>
+<p class="banner-note">The person is one user of this program. The shell is the
+other, and it is the one that judges the app before anybody opens it: in a folder
+listing, in Alt+Tab, in the taskbar preview. Most of the work in this section is
+about being legible to something that is not looking very hard.</p>
+
+<h3>The icon that arrived twice</h3>
+
+<p>Explorer composites the file association icon over a document thumbnail
+<strong>at paint time, in the view</strong>. Not in the thumbnail cache, and not
+in the handler's output. That distinction is the whole bug: the handler had been
+drawing the pdfview mark into the bottom-right corner at 34% of the thumbnail's
+width, and Explorer was then drawing its own badge on top of it.</p>
+
+<div class="shots">
+  <figure>
+    <div class="frame">
+      <p class="fh">Handler output &middot; SIIGBF_THUMBNAILONLY</p>
+      <div class="fb"><img class="shot" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMYAAAEACAYAAADoXQlAAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAABLSSURBVHhe7dxnqB3VGsbxWPCDgthQv9gFv4gVu6JiQ1EQVCRiBxsmGok9MSYmRk3vvZ/03ns1vTfTe++91/fyf7lrs8/2jddrHJN77vODzeyZWVP2PuuZWWvOzC5lIvI7pQoniIiCIRJSMEQCCoZIQMEQCSgYIgEFQySgYIgEFAyRgIIhElAwRAIKhkhAwRAJKBgiAQVDJKBgiAQUDJGAgiESUDBEAgqGSEDBEAkoGCIBBUMkoGCIBBQMkYCCIRJQMEQCCoZIQMEQCSgYIgEFQySgYIgEFAyRgIIhElAwRAIKhkhAwRAJKBgiAQVDJKBgiAQUDJGAgiESUDBEAgqGSEDBEAkoGCIBBUMkoGCIBBQMkYCCIRJQMEQCCoZIQMEQCSgYIgEFQySgYIgEFAyRgIIhElAwRAIKhkhAwRAJKBgiAQVDJKBgiAQUDJGAgiESUDBEAgqGSEDBEAkoGCIBBUMkoGCIBBQMkYCCIRJQMEQCCoZI4KwNRuPGje2VV16xCRMm5Kb16dPHpz355JPWrFmzYuUjLEv5b7/91o4ePVo4W+SUztpgvPTSS1aqVClr166dj8+ZM8cuvfRSO/fcc+2JJ56wRo0aFS7yO61bt/Z13HDDDXbo0KHC2SKnlHkw9u/fbzt37vT3x48f9/enqqS7d+/OlX3vvfe8Unft2tWP9m3atPHxBx980JdnXdu3b7cDBw4UWwfbYzrLrFixwpo3b+5nGsonJ0+e9O3s2bOn2LKMM/3EiRO5abt27fIXy4B5lGFfpeTKPBgff/yxXXbZZfbll1/aI488Yuedd57dc889NmLEiFyZw4cP208//WSXX365z3/77bfthRde8CAMGDDAX+ecc46PM7z66qutQYMGPnz22Wft2LFjvp69e/farbfe6tO3bdvm27j55pvt5ZdftiNHjniZ+fPn24svvujr4Qz0xRdf5ML4+eef+74WFRX5OMFiXVdccYVNnjzZp40cOdLLlC5dOrf/UvJkHow333zTKzSVqVq1avb999/7OJVt8eLFXqZevXo+7fbbb/czw+uvv+4BYVrPnj1t/fr1VrZsWR+/5ZZbrEuXLrZ69Wq788477fzzz7fp06f7ejgzUObpp5/28W7duvn43Xff7Ud6Kvq1117rgaCP8tlnn/n8999/38v36NHDx9944w0f7969u4/zqlq1qk/77rvvfLxGjRr//oRSEmUejHfffdcrEkfmhKMt0zjq0+S59957fbxfv34+n2m33XabTyMEGDx4sI8//vjjufVwlmFarVq1fPytt97y8XTEpxnG+AMPPODjP/zwg483bNgwt46HHnrIzx5r1671ptQll1xi1113nTe9ypUrlwvG888/79Mee+wx7+csWrQotw4peTIPRqqsHPkTzhxM4yzA2eCaa66xq666ytasWZMr88477xQLRjp60xyj6YVly5b5meXhhx/2Zelk0/TZuHGjz2fZ/GCkQN51113egX/qqafs4osv9mmsH6+99pqP02S67777/AxF8+ymm26ysWPHenn6Ofn9ECl5Mg8G/YX8ozhSMGjKbN682a6//npvWq1cuTJX5s8EgyP4c889ZxdeeGGuicb2ksJg0NdgnKYVl3xpclGejv7EiRO9TNu2bb0MfRxCQB+JMxJnlbQ8Zx4p2TIPRmpKMSyc1rRpU7/aQ2VnvHfv3j4/vylFcwhRMNCxY0efni7l5nfqC4OR+gc04ZLy5cvbhx9+mOuA00S68sorvVwK5syZM/3MxPovuugiGzduXG55KZn+sWBwxYkOLP0COsw0n1atWuVlCAhl7rjjjlznO1XMzp07e5nUX7j//vuLBWPTpk1244035pbPvxTcqVMnn84ZggByRqIPQeWmn1GmTBmfz/9M0lUrmkhc6WL6BRdc4B125tFEYxqBLbzMKyVP5sFITSku11LhaJI8+uijNn78+FyZdLmWK1fMZ5lXX33VzwK9evXyMn379vVxmk75wcCnn37q81hHPpZlOn2J9J9vjvbPPPOM7xNNpY8++ih3tkjq16/vy9EPSf+/+OCDD3wazT8p+TIPRup8U7GpZDt27MgdnQvxjzTmgzL5ZdN4dLRO89L/Mwqns0yq4KAc09leJM3P/+chYWRaYSilZMo8GOnWjvbt2xfOEjlrZR6M6GZAkbNd5sEQ+V+kYIgEFAyRgIIhElAwRAIKhkhAwRAJKBgigTMSDG65yH8G+7/Bcn9mWbbBPVDpHql9+/b5o68Jt3twS8ipbk/5K3jePHpOI/92lITPUHgL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" alt="The thumbnail handler's output for sample.pdf: page one on white, with nothing drawn over it." width="198" height="256"></div>
+    </div>
+    <figcaption>What <code>PdfThumb</code> hands back. Bare page, no mark.</figcaption>
+  </figure>
+  <figure>
+    <div class="frame">
+      <p class="fh">Explorer, extra large icons, 3&times;</p>
+      <div class="fb"><img class="shot zoom" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAYAAAAFcCAYAAADBO2nrAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAABTrSURBVHhe7d1Lbx3llsbx8zXyAfoT9BdoiQERY8SohZB6whk0UphEQkJCtIRES1x0CMoEnSGMzuD0AJKASIDcE3IlJE4wt9yci+0EkwRCLi3kk+V3L9drv+V6yvW61v+RfhOfvcu1q1atRzJ2zl82bdr0GAAQz1/8FwAAMVAAABAUBQAAQVEAABAUBQAAQVEAABAUBQAAQVEAABAUBQAAQVEAABAUBQAAQVEAABAUBQAAQVEAABAUBQAAQVEAABAUBQAAQVEAYoTUHD+viI0CECOk5vh5RWwUgBghNcfPK2KjAMQIqTl+XhEbBSBGSM3x84rYKAAxQmqOn1fERgGIEVJz/LwiNgpAjJCa4+cVsVEAYoTUHD+viI0CECOk5vh5RWwUgBghNcfPK2KjAMQIqTl+XhEbBSBGSM3x84rYKAAxQmqOn1fERgGIEVJz/LwiNgpAjJCa4+cVsVEAYoTUHD+viI0CECOk5vh5RWwUgBghNcfPK2KjAMQIqTl+XhEbBSBGSM3x84rYKAAxQmqOn1fERgGIEVJz/LwiNgpAjJCa4+cVsVEAYoTUHD+viI0CECOk5vh5RWwUgBghNcfPK2KjAMQIqTl+XhEbBSBGSM3x84rYKAAxQmqOn1fERgGIEVJz/LwiNgpAjJCa4+cVsVEAYoTUHD+viI0CECOk5vh5RWwUgBghNcfPK2KjAMQIqTl+XhEbBSBGSM3x84rYKAAxQmqOn1fERgGIEVJz/LwiNgpAjJCa4+cVsVEAYoTUHD+viI0CECOk5vh5RWwUgBghNcfPK2KjAMQIqTl+XhEbBSBGSM3x84rYKAAxQmqOn1fERgGIEVJz/LwiNgpAjJCa4+cVsVEAYoTUHD+viI0CECOk5vh5RWwUgBghNcfPK2KjAMQIqTl+XhEbBSBGSM3x84rYKAAxQmqOn1fERgGIEVJz/LwiNgpAjJCa4+cVsVEAYoTUHD+viI0CECOk5vh5RWwUgBghNcfPK2KjAMQIqTl+XhEbBSBGSM3x84rYKAAxQmqOn1fERgGIEVJz/LwiNgpATJVff/3VTE1Nmfn5eTM3N2f27t1rTp48ad58802THufmzZvmyJEj5tSpU+aHH34wt2/fNrOzs2ZmZsZcv37dpOdP6omfV8RGAYipQgGQPuLnFbFRAGKqUACkj/h5RWwUgJgq+/btMy+//LJ55513zNtvv222bt1q3nrrLfPMM8+Y9957z2zbts2kr3/llVfM888/b9544w3z7rvvmmeffda8+uqr5ptvvjGknvh5RWwUgJgqFADpI35eERsFIKYKBUD6iJ9XxEYBiKnyxRdfmHSxpgs69frrr5t0ub/00ksmXfTp6z/66CPzwgsvmKefftqkJfTaa6+Zp556yjz33HPm7t27htQTP6+IjQIQU4UCIH3EzytiowDEVKEASB/x84rYKAAxVXbv3m1efPFFk/6a5okTJ8z7779v0l/r/PTTT83Zs2fN6dOnzfnz503666QffPCB+f77783x48dNep47d+40pM74eUVsFICYKhQA6SN+XhEbBSCmCgVA+oifV8RGAYipcu3aNXPlyhVDSJf4eUVsFICYKhQA6SN+XhEbBSCmCgVA+oifV8RGAYgRUnP8vCI2CkCMkJrj5xWxUQBihNQcP6+IjQIQU+WPP/4wv//+u0m/nnvNgwcPGqWvv3//vkn/7f7UnTt3zMOHD40/7hO580y/nh4n/Xru/NPzTL+eHufRo0eGrBw/r4iNAhBTJbdA/eJveo1fzE9QAMTPK2KjAMRUyS1Qv/ibXuMX8xMUAPHzitgoADFVfv75Z5P+2/qfffaZSf/BuPSvcPfs2WPS16R/FXzs2DFz8OBBc+DAAZO+5saNG+aTTz4x6V8C79ixw3z99dfm0KFDJv2/qzxz5ow5fPiw2b9/v0mPn/5/JHz55Zfm6tWrhqwcP6+IjQIQU4UCoAD6iJ9XxEYBiKlCAVAAfcTPK2KjAMRU+e2338zCwoKZmpoyly5dMjMzMyb9K+KLFy+a9B90m5ubM+m/3Z9+/d69eyb9WXz6fdPjp3+xPD8/b2ZnZ016/PS/N6SvScsm9xnTr/P/PVAeP6+IjQIQU4UCoAD6iJ9XxEYBiKlCAVAAfcTPK2KjAMQIqTl+XhEbBSBGSM3x84rYKAAxQmqOn1fERgGIEVJz/LwiNgpAjJCa4+cVsVEAYoTUHD+viI0CECOk5vh5RWwUgBghNcfPK2KjAMQIqTl+XhEbBSBGSM3x84rYKAAxQmqOn1fERgGIEVJz/LwiNgpAjJCa4+cVsVEAYoTUHD+viI0CECOk5vh5RWwUgBghNcfPK2KjAMQIqTl+XhEbBSBGSM3x84rYKAAxQmqOn1fERgGIEVJz/LwiNgpAjJCa4+cVsVEAYoTUHD+viI0CECOk5vh5RWwUgBghNcfPK2KjAMQIqTl+XhEbBSBGSM3x84rYKAAxQmqOn1fERgGIEVJz/LwiNgpAjJCa4+cVsVEAYoTUHD+viI0CECOk5vh5RWwUgBghNcfPK2KjAMQIqTl+XhEbBSBGSM3x84rYKAAxQmqOn1fERgGIEVJz/LwiNgpAjJCa4+cVsVEAYoTUHD+viI0CECOk5vh5RWwUgJgq9+7dMzdv3jTXr1838/Pz5vbt2+bu3bvm1q1b5tq1a2ZmZsakr0+POTc3Z27cuGHSY6bndvnyZZO+N7WwsGDS75UeM/367OysSb+efpb0HNLrRpbHzytiowDEVKEAKIA+4ucVsVEAYqpQABRAH/HzitgoADFVrly5Yvbt22f27Nljjhw5YtLX/Pjjj+bgwYPm888/Nzt37jSHDx82x44dM7t37zbpcU6dOmUOHDhgduzYYdKvHz161Hz33Xcm/b7p9/rwww/N/v37Tfqar776ynz88cdmenraPHr0yJDF+HlFbBSAmCoUAAXQR/y8IjYKQEwVCoAC6CN+XhEbBSCmSvpz7ZMnT5qzZ8+ac+fOmQsXLph0yZ44ccKkr0mlxz9//rxJi2RqaqrRmTNnTHo+qfQ13377rUm/V1p46bkdP37cpMWTSv97wIMHDwxZHj+viI0CEFOFAqAA+oifV8RGAYipQgFQAH3EzytiowDEVLlz5465dOmSyf36Y/prnal0saa/ypke56effjLpa65evWrS46S/7pku64sXL5r09an0+6bSXw/95ZdfTFpC6fHTz5heK7Jy/LwiNgpATBUKgALoI35eERsFIKYKBUAB9BE/r4iNAhDbiMn9umTu62lKXkPqiZ9XxEYBiG3E5JZ47utpSl5D6omfV8RGAYhtxOSWeO7raUpeQ+qJn1fERgGIkTpz8Nx989dtt82//deNDS39LOlnzMXPK2KjAMRInaEAFuPnFbFRAGKkzlAAi/HzitgoADFST/6x957xi3Ps0s+exs8rYqMAxEg9oQAoAKyMAhAj9YQCoACwMgpAjAyb9OfgfilGlV4TP6+IjQIQI8OGAliOAkAOBSBGhg0FsBwFgBwKQIwMmzH9iqdKek38vCI2CkCMDBsKYDkKADkUgBgZNhTAchQAcigAMTJs/PLDJD+viI0CECPDxi88TPLzitgoADEybPzCwyQ/r4iNAhAjw8YvPIWtf18wh87dX7P3/u+u8d9jvfh5RWwUgBgZNn7hKVAAGCsKQIwMG7/wFCgAjBUFIEaGjV94Cn/75x3TJd/PLPmfj34z/vv1yc8rYqMAxMiw8QtPgQLAWFEAYmTY+IWnQAFgrCgAMTJs/MJT6KMAPjuxZD3LwM8rYqMAxMiw8QtPgQLAWFEAYmTY+IWnQAFgrCgAMTJs/MJT6LsA1rMM/LwiNgpAjAwbv/AUKACMFQUgRoaNX3gKFADGigIQI8PGLzwFVQG0zX/+7y3jz2mt/LwiNgpAjAwbv/AUKACMFQUgRoaNX3gKFADGigIQI8PGLzwFCgBjRQGIkWHjF54CBYCxogDEyLDxC0+BAsBYUQBiZNj4hadAAWCsKAAxMmz8wlOgADBWFIAYGTZ+4SlQABgrCkBMlcuXL5ujR482mp6eNmfPnjVTU1Pm9OnT5sKFC+b+/ftmTPELTyFXAP/+3zeNf89q0vfmQgGgbxSAmCoUwNriF54CBYCxogDEVKEA1ha/8BQoAIwVBSCmysLCgrl69aq5cuWKuXXrlrl586a5ceOGmZ2dNfPz8+bhw4dmTPELTyFXAN/+/Ic5dO5+K+l7c6EA0DcKQEwVCmBt8QtPgQLAWFEAYqpQAGuLX3gKFADGigIQI8PGLzyFXAH4pb5WuVAA6BsFIEaGjV94ChQAxooCECPDxi88BQoAY0UBiJFh4xeeQq4A/rrttkmXdYn0vblQAOgbBSBGho1feAoUAMaKAhAjw8YvPAUKAGNFAYiRYeMXnkKuAPoOBYC+UQBiZNj4hadAAWCsKAAxMmz8wlOgADBWFIAYGTZ+4SlQABgrCkCMDBu/8BQoAIwVBSBGho1feAoUAMaKAhAjw8YvPAUKAGNFAYiRYeMXngIFgLGiAMTIsPELT4ECwFhRAGJk2PiFp5Au4rQM+vYfW+eMP6e18vOK2CgAMTJs/MJToAAwVhSAGBk2fuEpUAAYKwpAjAyb9B9Z88svqvSa+HlFbBSAGBk2FMByFAByKAAxMmwogOUoAORQAGJk2Bw8d9/4RRhVek38vCI2CkCMDBsKYDkKADkUgBgZNhTAchQAcigAMVJP/rH3nvFLcezSz57GzytiowDESD2hACgArIwCECP1hAKgALAyCkCM1Jn05+Bj+lXR9LOknzEXP6+IjQIQI3WGAliMn1fERgGIkTpDASzGzytiowAAICgKAACCogAAICgKAACCogAAICgKAACCogAAICgKAACCogAAICgKAACCogAAICgKAACCogAAICgKAACCogAAICgKAACCogAAICgKAACCogAArGCL2fX4sZnevtksf8/Ktux6bCaz9B38e9APCgDACiiAMaMAAKyAAhgzCgDACjQFsHn7tEkX/ZY/C+Ff/HvQPwoAwAoogDGjAACsgAIYMwoAI9a8vHZt2WSWvweTmq9hWQH8+b8t+nPvP/F41xaz/D1YTxQARqx5eVEAbTRfQwpgHCgAjFjz8qIA2mi+hhTAOFAAGK/N282fe+cJCqANfQGUvRfrgQLAeFEAAhTAmFEAGC8KQIACGDMKAONFAQhQAGNGAWC8KAABCmDMKACMFwUgQAGM2WgLYOIfnJrebjZv2WUmkr7mz79c/JeJ42YWSjYlx0zk/1pys0kfpJKoll3+H/DKJT3/dn/t2eXebd/12LSO6NcT67uPzYs4n6Xp3r55iykqgC27TOuIrj/KUQBPUrKsKQAKoEB995ECQDMK4ElKljUFQAEUqO8+UgBoFqMAugxZZulnH4Dcw1bwfScXR5r0gdxk/PtXO07ZEmn+mW/bMpu8/u3Ov+97V3Yd1i53/dteh9xxis4/89nLrmFmBpLk5z/V/CyUvRfrgQJYTeZByg9x89CXfN/cA7+uiyP38FMAxXLXv+11yB2n6Pwzn73sGmZmIEl+/lPNz0LZe7EeKIDVZB6k/BA3D33J98098Ou6OHIPPwVQLHf9216H3HGKzj/z2cuuYWYGkuTnP9X8LJS9F+shSAEsjXHZz6ObB7fs4UlM/Dx09Ye/0wOfMXEdCpZ429fnrf0adrt3icwS7HI9S4zqPmauYdkSb56BsvdiPVAAjZoHt2R5TaAA1nQNu927RGZ5dbmeJUZ1HzPXsGyJN89A2XuxHiiARs2DW7K8JlAAa7qG3e5dIrO8ulzPEqO6j5lrWLbEm2eg7L1YDzEKoO0DkBn61g9wy+NMLo4Oi6/1MZt/5qt6UMvOYUmne5dqef1V2n7eEmXH7OM+djkmBVA7CqCJanG0PE7ZQ95O2TG7POSrKzuHJZ3uXarl9Vdp+3lLlB2zj/vY5ZgUQO0ogCaqxdHyOGUPeTtlx+zykK+u7ByWdLp3qZbXX6Xt5y1Rdsw+7mOXY1IAtaMAmmQWhyq5BVT2kLdTdswuD3mBif8WkjuHJZ3uXSpzH3PXX6XsmrdTdsw+7mOXY1IAtaMAmmQWhyq5BVT2kLdTdswuD3kBCmDFz1ui7Jh93Mcux6QAakcBNMksDlVyC6jsIW+n7JhdHvICFMCKn7dE2TH7uI9djkkB1I4CaMLiaPGQr67sHJZ0uncp7qPgPnY5JgVQOwqgCYujxUO+urJzWNLp3qW4j4L72OWYFEDtKIAmLI4WD/nqys5hSad7l+I+Cu5jl2NSALWjABo1D27JX7F2MfmQL8n95XDe2s+/23Wr7ByqKID1vI+Z13e5hpl/379siTefT9l7sR4ogEbNg5t/8DSGWxxLul23ys6BAlh8fZdrSAGMGgXQqHlw8w+exnCLY0m361bZOVAAi6/vcg0pgFGjAFaTeQDKlkjy89Pp7SZ3DpOLY+K7mZKfI0989pbvzS3NttewyznI7l0PP78uOZ8q7mNmbvPlkcjNQJIu17DsvVgPFMBqMg8SBbD8/FXnILt3FMCyuaUAkKIAVpN5kCiA5eevOgfZvaMAls0tBYAUBdBG7qEqSElhTC6O5IHfvN3kHsjJtFwWWc0PcFE6XPPB7t3Ecsx89oLzqe4+Fiz0iUx8xi1m6WxKl3jzNSx7L9YDBdBGyRLJhAIov+aD3TsKYDEUQBgUQBslSyQTCqD8mg927yiAxVAAYYy2ADai7OLo8vBj3XEfsVFQABVhcYwD9xEbBQVQERbHOHAfsVFQABVhcYwD9xEbBQVQERbHOHAfsVFQABVhcYwD9xEbBQVQERbHOHAfsVFQABVhcYwD9xEbBQVQERbHOHAfsVFQABVhcYwD9xEbBQVQERbHOHAfsVFQABVhcYwD9xEbBQUAAEFRAAAQFAUAAEFRAAAQFAUAAEFRAAAQFAUAAEFRAAAQFAUAAEFRAAAQFAUAAEFRAAAQFAUAAEFRAAAQFAUAAEFRAAAQFAUAAEFRAAAQFAUAAEFRAAAQFAUAAEFRAAAQFAUAAEFRAAAQFAUAAEFRAAAQFAUAAEFRAAAQFAUAAEFRAAAQFAUAAEFRAAAQFAUAAEFRAAAQFAUAAEFRAAAQFAUAAEFRAAAQFAUAAEFRAAAQFAUAAEFRAAAQ1P8DvLRREyZVx7QAAAAASUVORK5CYII=" alt="The same file shown in an Explorer window: the page preview with a single blue association badge in the bottom-right corner." width="384" height="348"></div>
+    </div>
+    <figcaption>The same file in the view. One badge, drawn by Explorer.</figcaption>
+  </figure>
+</div>
+
+<p>So the fix was to draw nothing. <code>DrawBadge</code>, <code>LoadBadge</code>,
+the three tuning constants and the embedded <code>.ico</code> resource all came
+out of <code>PdfThumb</code>, and the corner is left to the shell, which knows the
+right size for it at every DPI and every icon view.</p>
+
+<div class="panel watch">
+  <p class="ph">Watch out</p>
+  <div class="pb">
+    <p>The thumbnail cache keys on path plus modification time, so a corrected
+    handler is invisible until the cache lets go. Nothing you do to the code will
+    show up in a folder you have already looked at.</p>
+    <p>Fastest check: copy a PDF to a new filename. Proper clear: stop Explorer,
+    delete <code>%LOCALAPPDATA%\Microsoft\Windows\Explorer\thumbcache_*.db</code>,
+    start it again. There is a second cache in front of that one, the COM
+    surrogate, which keeps <code>PdfThumb.dll</code> loaded and locked once it has
+    drawn anything; a rebuild fails with <em>file in use</em> until it is killed.</p>
+  </div>
+</div>
+
+<h3>Six hundred milliseconds of empty window</h3>
+
+<p>The window is on screen at 296 ms. The first page of the document is on it at
+865 ms. For the <strong>569 ms</strong> in between there is a real, sized,
+focusable, Alt+Tab-able window with no content in it at all, and there is no
+honest way to avoid that: WebView2 cannot start without a window to attach to.</p>
+
+<p>What the app controls is what that window is painted with. The background
+colour the viewer settled on is posted back to the host and written to
+<code>state.json</code>, and the next launch paints the form and the WebView2's
+own default background that colour before anything loads. A dark-theme reader
+never sees a white rectangle, and the taskbar preview and Alt+Tab thumbnail show
+a plausible window rather than a flash. It is one string in a settings file doing
+the work of a splash screen.</p>
+
+<div class="panel try">
+  <p class="ph">The shell owes you one</p>
+  <div class="pb">
+    <p>Because thumbnail handlers run in a host Windows provides, a fault in
+    <code>PdfThumb</code> cannot take Explorer down. That is worth more than it
+    sounds: it means the rendering path can be aggressive about odd files, and
+    the failure mode of a bad PDF is one icon falling back to the generic
+    document glyph.</p>
+  </div>
+</div>
+
+<h3>Placement, and monitors that went away</h3>
+
+<p>Window bounds are remembered and restored, each additional window cascades 28
+pixels so they do not stack exactly, and the restored rectangle is tested against
+every attached screen. A window saved on a monitor that is no longer there gets
+dragged back to the primary work area rather than opening somewhere nobody can
+reach it.</p>
+
+<div class="banner"><h2 id="walk">Walkthrough: one launch</h2></div>
+<p class="banner-note">A representative warm launch of the current build, start to
+first page on screen. Numbered because this genuinely is a sequence, and every
+step below waits for the one above it.</p>
+
+<figure>
+  <div class="frame">
+    <p class="fh">Measured 2026-09-18 &middot; warm launch &middot; docs/sample.pdf &middot; 865 ms to first paint</p>
+    <div class="fb">
+      <svg viewBox="0 0 860 210" role="img" aria-label="A horizontal timeline of one 865 millisecond launch, divided into nine measured segments. The largest are the first WinForms Form at 196 milliseconds, the browser process spawn at 237 milliseconds, and drawing the first page at 202 milliseconds.">
+        <!-- scale: 0..900 ms maps to x 40..820 -->
+        <g font-family="'JetBrains Mono',monospace" font-size="11" font-weight="700" fill="#5A5A63">
+          <text x="40" y="196" text-anchor="middle">0</text>
+          <text x="126.7" y="196" text-anchor="middle">100</text>
+          <text x="213.3" y="196" text-anchor="middle">200</text>
+          <text x="300" y="196" text-anchor="middle">300</text>
+          <text x="386.7" y="196" text-anchor="middle">400</text>
+          <text x="473.3" y="196" text-anchor="middle">500</text>
+          <text x="560" y="196" text-anchor="middle">600</text>
+          <text x="646.7" y="196" text-anchor="middle">700</text>
+          <text x="733.3" y="196" text-anchor="middle">800</text>
+          <text x="820" y="196" text-anchor="middle">900</text>
+        </g>
+        <g stroke="#16161A" stroke-width="3" fill="none">
+          <path d="M40 172 L820 172"/>
+          <path d="M40 172 L40 180 M126.7 172 L126.7 180 M213.3 172 L213.3 180 M300 172 L300 180 M386.7 172 L386.7 180 M473.3 172 L473.3 180 M560 172 L560 180 M646.7 172 L646.7 180 M733.3 172 L733.3 180 M820 172 L820 180"/>
+        </g>
+        <text x="40" y="24" font-family="'JetBrains Mono',monospace" font-size="11" font-weight="700" letter-spacing="2" fill="#5A5A63">MILLISECONDS FROM PROCESS START</text>
+
+        <!-- segments -->
+        <g stroke="#16161A" stroke-width="3">
+          <rect x="40"    y="96" width="23.4" height="56" fill="#F0EBDD"/>
+          <rect x="63.4"  y="96" width="5.2"  height="56" fill="#FDFBF4"/>
+          <rect x="68.6"  y="96" width="169.9" height="56" fill="#12233D"/>
+          <rect x="238.5" y="96" width="37.3" height="56" fill="#5A5A63"/>
+          <rect x="275.8" y="96" width="20.8" height="56" fill="#F0EBDD"/>
+          <rect x="296.6" y="96" width="205.4" height="56" fill="#12233D"/>
+          <rect x="502"   y="96" width="67.6" height="56" fill="#5A5A63"/>
+          <rect x="569.6" y="96" width="45.1" height="56" fill="#F0EBDD"/>
+          <rect x="614.7" y="96" width="175.1" height="56" fill="#5A5A63"/>
+        </g>
+
+        <!-- floor-cost flags: gold as a fill behind an ink keyline, never a line -->
+        <g>
+          <rect x="106" y="60" width="96" height="24" fill="#F2B417" stroke="#16161A" stroke-width="3"/>
+          <text x="154" y="77" text-anchor="middle" font-family="Anton,Impact,sans-serif" font-size="14" fill="#16161A">FLOOR COST</text>
+          <path d="M154 84 L154 96" stroke="#16161A" stroke-width="3" fill="none"/>
+          <rect x="351" y="60" width="96" height="24" fill="#F2B417" stroke="#16161A" stroke-width="3"/>
+          <text x="399" y="77" text-anchor="middle" font-family="Anton,Impact,sans-serif" font-size="14" fill="#16161A">FLOOR COST</text>
+          <path d="M399 84 L399 96" stroke="#16161A" stroke-width="3" fill="none"/>
+        </g>
+
+        <!-- numbered callouts -->
+        <g font-family="Anton,Impact,sans-serif" font-size="14" text-anchor="middle">
+          <g>
+            <circle cx="51.7"  cy="120" r="11" fill="#fff" stroke="#16161A" stroke-width="3"/><text x="51.7" y="125" fill="#16161A">1</text>
+            <circle cx="66"    cy="46"  r="11" fill="#fff" stroke="#16161A" stroke-width="3"/><text x="66" y="51" fill="#16161A">2</text>
+            <circle cx="153.5" cy="124" r="11" fill="#fff" stroke="#16161A" stroke-width="3"/><text x="153.5" y="129" fill="#16161A">3</text>
+            <circle cx="257.1" cy="124" r="11" fill="#fff" stroke="#16161A" stroke-width="3"/><text x="257.1" y="129" fill="#16161A">4</text>
+            <circle cx="286.2" cy="46"  r="11" fill="#fff" stroke="#16161A" stroke-width="3"/><text x="286.2" y="51" fill="#16161A">5</text>
+            <circle cx="399.3" cy="124" r="11" fill="#fff" stroke="#16161A" stroke-width="3"/><text x="399.3" y="129" fill="#16161A">6</text>
+            <circle cx="535.8" cy="124" r="11" fill="#fff" stroke="#16161A" stroke-width="3"/><text x="535.8" y="129" fill="#16161A">7</text>
+            <circle cx="592.1" cy="46"  r="11" fill="#fff" stroke="#16161A" stroke-width="3"/><text x="592.1" y="51" fill="#16161A">8</text>
+            <circle cx="702.2" cy="124" r="11" fill="#fff" stroke="#16161A" stroke-width="3"/><text x="702.2" y="129" fill="#16161A">9</text>
+          </g>
+        </g>
+        <g stroke="#16161A" stroke-width="3" fill="none">
+          <path d="M66 57 L66 96"/>
+          <path d="M286.2 57 L286.2 96"/>
+          <path d="M592.1 57 L592.1 96"/>
+        </g>
+        <!-- window-on-screen marker -->
+        <g>
+          <path d="M296.6 152 L296.6 166" stroke="#D62828" stroke-width="4" fill="none"/>
+          <text x="302" y="166" font-family="Archivo,Arial,sans-serif" font-size="12" font-weight="800" fill="#D62828">window on screen &mdash; 569 ms of it empty</text>
+        </g>
+      </svg>
+    </div>
+  </div>
+  <figcaption>Nine segments, so the labels sit in a numbered legend below rather
+  than as arrows on the drawing. Two segments are marked as floor costs: they are
+  set by the frameworks, not by this code.</figcaption>
+</figure>
+
+<ol class="legend">
+  <li><span class="ln">1</span><span>Host and .NET runtime start</span><span class="lms">27 ms</span></li>
+  <li><span class="ln">2</span><span>Visual styles and per-monitor DPI</span><span class="lms">6 ms</span></li>
+  <li><span class="ln">3</span><span>The first <code>new Form()</code></span><span class="lms">196 ms</span></li>
+  <li><span class="ln">4</span><span>WebView2 control, icon, placement</span><span class="lms">43 ms</span></li>
+  <li><span class="ln">5</span><span>Window shown</span><span class="lms">24 ms</span></li>
+  <li><span class="ln">6</span><span>Browser process spawn</span><span class="lms">237 ms</span></li>
+  <li><span class="ln">7</span><span>HTML, CSS, viewer.js, pdf.js</span><span class="lms">78 ms</span></li>
+  <li><span class="ln">8</span><span>pdf.js opens the document</span><span class="lms">52 ms</span></li>
+  <li><span class="ln">9</span><span>First page drawn</span><span class="lms">202 ms</span></li>
+</ol>
+
+<div class="step">
+  <div class="step-head"><div class="step-n">3</div><div class="step-title">The first Form is the expensive one</div><div class="step-cost">196 ms</div></div>
+  <p>Not <code>EnableVisualStyles</code>, which is 2 ms, and not the window handle,
+  which is 9 ms. Constructing the very first WinForms <code>Form</code> in the
+  process costs 130 to 250 ms of type loading and static initialisation across
+  System.Windows.Forms and System.Drawing, GDI+ startup included. The second
+  <code>Form</code> in the same process costs nothing measurable.</p>
+  <p>This is why the window is now created before the IPC listener and the hidden
+  marshalling form instead of after them. Whichever <code>Form</code> is first
+  pays this, so it may as well be the one the user is waiting for; everything else
+  moved behind it, into the window where the browser is spawning anyway.</p>
+</div>
+
+<div class="step">
+  <div class="step-head"><div class="step-n">6</div><div class="step-title">The browser spawn is per process, not per window</div><div class="step-cost">237 ms</div></div>
+  <p>Measured both ways. The first window's <code>EnsureCoreWebView2Async</code>
+  costs 183 to 263 ms. A second window in the same process, opened by handing a
+  different file to the running instance, costs <strong>39 ms</strong>, and its
+  WebView2 control constructs in 0.2 ms rather than 33 ms.</p>
+  <p>So roughly 220 ms of that first cost is the browser process starting, paid
+  once. It is also the reason the single-instance rule earns its keep beyond
+  tidiness: the second document you open is about 500 ms faster than the first.</p>
+</div>
+
+<div class="banner gold"><h2 id="changed">What changed</h2></div>
+<p class="banner-note">Measured as 18 interleaved pairs, alternating builds run by
+run so drift in machine load lands on both. Warm launches, first run of each set
+discarded.</p>
+
+<div class="scroll">
+<table>
+  <thead>
+    <tr><th>To first page on screen</th><th class="num">1.0.0</th><th class="num">Current</th><th class="num">Change</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Median</td><td class="num">988 ms</td><td class="num">915 ms</td><td class="num">&minus;73 ms</td></tr>
+    <tr><td>25th percentile</td><td class="num">907 ms</td><td class="num">857 ms</td><td class="num">&minus;50 ms</td></tr>
+    <tr><td>75th percentile</td><td class="num">1002 ms</td><td class="num">983 ms</td><td class="num">&minus;19 ms</td></tr>
+    <tr><td>Fastest observed</td><td class="num">868 ms</td><td class="num">818 ms</td><td class="num">&minus;50 ms</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>Seven per cent. It is worth being blunt about why it is not more: two thirds of
+what remains is the 196 ms first <code>Form</code> and the 237 ms browser spawn,
+and both are floor costs of choosing WinForms and WebView2. The rest of the budget
+was already fairly tight.</p>
+
+<h3>The five changes, and what each was worth</h3>
+
+<div class="scroll">
+<table>
+  <thead>
+    <tr><th>Change</th><th>Mechanism</th><th>State</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Compile ahead of time</strong><br><code>PublishReadyToRun</code>, non-composite</td>
+      <td>The largest single item. Cuts time-to-<code>Main</code> from ~100 ms to ~27 ms and takes a bite out of the WinForms first-touch cost.</td>
+      <td><span class="v"><svg><use href="#m-go"/></svg>Kept</span></td>
+    </tr>
+    <tr>
+      <td><strong>Window before plumbing</strong><br><code>Shell.Run</code> reordered</td>
+      <td>The IPC listener and the hidden marshalling form now start after the window, inside the gap where the browser is spawning.</td>
+      <td><span class="v"><svg><use href="#m-go"/></svg>Kept</span></td>
+    </tr>
+    <tr>
+      <td><strong>Less Edge to start</strong><br>eight added browser switches</td>
+      <td>No first-run greeting, no extensions, no sync, no component update, no background networking, no crash reporter.</td>
+      <td><span class="v"><svg><use href="#m-go"/></svg>Kept</span></td>
+    </tr>
+    <tr>
+      <td><strong>pdf.js alongside viewer.js</strong><br>two <code>modulepreload</code> links</td>
+      <td><code>viewer.js</code> imports pdf.js at its top, so the browser could not see the second fetch until the first had arrived and parsed. Declared in the head they go out together.</td>
+      <td><span class="v"><svg><use href="#m-go"/></svg>Kept</span></td>
+    </tr>
+    <tr>
+      <td><strong>Read the state file once</strong><br><code>AppState</code> caches, revalidates on mtime</td>
+      <td>Opening a window used to parse <code>state.json</code> three times: remembered background, remembered placement, recent list. Small on a warm disk, and it removed a real stall (below).</td>
+      <td><span class="v"><svg><use href="#m-go"/></svg>Kept</span></td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<h3>Two correctness fixes that came out of the same pass</h3>
+
+<p><strong>The recent list no longer waits on unreachable drives.</strong> It
+pruned entries by calling <code>File.Exists</code> on every remembered path, up to
+twenty-five of them, on the path that opens a document. One entry on a
+disconnected share answers in its own time, and the open waited. Paths on UNC
+roots and drives that are not ready fixed local disks are now taken on trust
+instead of stated.</p>
+
+<p><strong>The recent list no longer blocks the open.</strong> Startup used to
+<code>await loadRecents()</code> before looking at the requested file. The fetch
+now runs alongside opening the document and is awaited at the one point that
+genuinely needs it, which is working out what page you left this file on.</p>
+
+<div class="banner"><h2 id="paths">Pathways not taken</h2></div>
+<p class="banner-note">Two optimisations were built, measured and removed. They are
+written down with their numbers because the next person to have the idea should
+get to skip the implementation.</p>
+
+<h3>Composite ReadyToRun</h3>
+
+<p>Linking the whole framework into one ahead-of-time image is the faster of the
+two R2R modes on a warm start, by a few per cent. It also produces an
+<strong>87 MB</strong> <code>pdfview.r2r.dll</code>, and the first launch after
+install then waits for the virus scanner to read all of it: <strong>6187 ms
+against 2141 ms</strong> for the non-composite build, measured as the first run
+after a fresh publish.</p>
+
+<p>The first launch is the one a new user judges the program on. Non-composite
+kept.</p>
+
+<h3>Spawning the browser during WinForms start-up</h3>
+
+<p>The two big floor costs are roughly the same length and run one after the
+other, which is an obvious invitation. The browser process only needs a window
+handle, and a bare Win32 window costs about a millisecond and touches none of
+WinForms &mdash; a hidden WinForms form would be no use, because it queues behind
+the same static constructors the UI thread is already inside.</p>
+
+<p>So: a 0&times;0 <code>WS_POPUP</code> window on its own STA thread with its own
+message pump, a throwaway <code>CoreWebView2Controller</code> on it, and the real
+window finds the browser already running. It works. <code>EnsureCoreWebView2Async</code>
+on the real window drops from 183&ndash;263 ms to <strong>10&ndash;27 ms</strong>.</p>
+
+<p>And the launch is barely faster. Over 40 interleaved runs the median moved from
+864 ms to 820 ms, about five per cent, because <strong>the spawn is not free of
+the thing it is overlapping</strong>: run concurrently with WinForms loading, the
+same browser start-up stretches from 237 ms to between 400 and 880 ms of wall
+clock. The two costs contend for the same disk and the same cores. Moving work off
+the serial path does not help much when the work gets slower by the same amount.</p>
+
+<div class="panel owes">
+  <p class="ph">The trap in this one</p>
+  <div class="pb">
+    <p>A WebView2 environment is an apartment-bound COM object. The first attempt
+    borrowed the main environment from the warm-up thread and failed with
+    <em>Unable to cast to ICoreWebView2Environment</em>, because it had resolved on
+    a thread pool thread. The working shape is a second environment created on the
+    warm-up thread, naming the identical user data folder and identical browser
+    arguments so the two share one browser process.</p>
+    <p>Then the two environments open that folder at the same time and contend,
+    which cost more than the warm-up saved until the main one was deferred.</p>
+  </div>
+</div>
+
+<p>About 180 lines of Win32 interop, a raw window class, a hand-rolled message
+loop and an extra WebView2 controller, for five per cent that does not clear the
+noise. Removed.</p>
+
+<h3>Still open</h3>
+
+<p><span class="gapid">GAP 1</span> <strong>50.5 MB of WPF ships and is never
+loaded.</strong> A self-contained publish copies the whole
+Microsoft.WindowsDesktop.App runtime pack, and that pack carries WPF alongside
+WinForms. 38 files, headed by <code>PresentationFramework.dll</code> at 15.4 MB,
+<code>PresentationCore.dll</code> at 8.1 MB and
+<code>System.Windows.Forms.Design.dll</code> at 5.3 MB, out of 148 MB at the root
+of <code>dist</code>. The app references <code>Microsoft.Web.WebView2.WinForms</code>
+and never touches the WPF flavour.</p>
+
+<p>Removing them is an MSBuild target over <code>ResolvedFileToPublish</code>, not
+a code change. It is left open rather than done quietly, because it changes the
+shape of a shipped build and the failure mode of getting the list wrong is an app
+that will not start on somebody else's machine.</p>
+
+<div class="scroll">
+<table>
+  <thead>
+    <tr><th>Pathway</th><th>Measured</th><th>Verdict</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Composite ReadyToRun</td><td class="num">6187 ms first launch, vs 2141</td><td><span class="v"><svg><use href="#m-caution"/></svg>Rejected</span></td></tr>
+    <tr><td>Browser warm-up on a bare HWND</td><td class="num">864 &rarr; 820 ms, n=40</td><td><span class="v"><svg><use href="#m-caution"/></svg>Rejected</span></td></tr>
+    <tr><td>Strip the WPF runtime from publish</td><td class="num">&minus;50.5 MB of 148</td><td><span class="v"><svg><use href="#m-gap"/></svg>Open</span></td></tr>
+    <tr><td>Replace the WinForms host with Win32</td><td class="num">up to &minus;196 ms, not attempted</td><td><span class="v"><svg><use href="#m-gap"/></svg>Open</span></td></tr>
+  </tbody>
+</table>
+</div>
+
+<blockquote>
+  <p>Two thirds of a cold start is two frameworks waking up.</p>
+  <p class="small">196 ms for the first WinForms Form and 237 ms for the browser
+  process, out of 915. Neither is this program's code, and neither will move
+  without changing what the program is built on.</p>
+</blockquote>
+
+<div class="banner"><h2 id="measure">Measure it yourself</h2></div>
+<p class="banner-note">The instrument is in the shipped build. It is off unless
+asked for, and when it is off every mark is a single bool test, which is what
+keeps it on the real start-up path instead of in a build nobody runs.</p>
+
+<pre><code>set PDFVIEW_TRACE=1
+dist\pdfview.exe docs\sample.pdf
+
+type %LOCALAPPDATA%\pdfview\trace.log</code></pre>
+
+<p>Time zero is when Windows created the process, taken from
+<code>Process.StartTime</code>, not when <code>Main</code> ran. The host and
+runtime start-up in between is a real part of what the user waits for and it is
+the part that is easiest to forget to measure. The page posts its own marks back
+through the same channel the viewer already uses to talk to the host, so a single
+timeline covers both sides of the process boundary:</p>
+
+<pre><code>    27.3 ms  (+  27.3)  main
+    30.1 ms  (+   2.0)  visual styles
+    33.1 ms  (+   3.0)  dpi mode
+   228.7 ms  (+ 195.6)  viewer form ctor
+   263.9 ms  (+  35.2)  viewer form built
+   295.8 ms  (+  23.3)  window shown
+   533.5 ms  (+ 237.7)  corewebview2 ready
+   610.6 ms  (+  77.1)  page: module evaluated
+   662.9 ms  (+  52.3)  page: pdf parsed
+   865.1 ms  (+ 202.2)  page: first-paint</code></pre>
+
+<p>One further switch exists for bisecting: <code>PDFVIEW_WEB</code> points the
+host at a different <code>app/</code> directory, so the front end can be edited
+without republishing.</p>
+
+</main>
+</div>
+
+<footer>
+  <p><strong>pdfview &middot; internals and design record no. 1</strong> &middot; drawn up 2026-09-18</p>
+  <p>Every figure measured on one Windows 11 machine against <code>docs/sample.pdf</code>,
+  six pages, on 2026-09-18. Launch timings are warm starts to first page paint,
+  collected as interleaved pairs so machine drift lands on both builds; cold-start
+  numbers are quoted only where the first-run effect is the point being made, and
+  are not reproducible run to run.</p>
+  <p>House style: 1993 strategy guide, from <code>design/HOUSE_STYLE.md</code>.
+  Verdict marks from <code>design/SYMBOL_STANDARDS.md</code> &mdash; circle works,
+  triangle will surprise you, square is missing; shape before colour, so the page
+  survives greyscale. Single theme on purpose.</p>
+</footer>
+
+</div>
