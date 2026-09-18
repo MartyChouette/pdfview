@@ -7,6 +7,7 @@ static class Program
     [STAThread]
     static int Main(string[] argv)
     {
+        Trace.Mark("main");
         var args = CommandLine.Parse(argv);
 
         if (args.Register) return Installer.Register(args.Quiet);
@@ -21,9 +22,13 @@ static class Program
             // The holder is gone or wedged; carry on and open our own window.
         }
 
+        Trace.Mark("single-instance checked");
+
         Application.EnableVisualStyles();
+        Trace.Mark("visual styles");
         Application.SetCompatibleTextRenderingDefault(false);
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
+        Trace.Mark("dpi mode");
 
         Application.ThreadException += (_, e) => Crash(e.Exception);
         AppDomain.CurrentDomain.UnhandledException += (_, e) => Crash(e.ExceptionObject as Exception);

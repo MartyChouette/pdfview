@@ -6,6 +6,11 @@
 <title>pdfview</title>
 <link rel="icon" href="/app/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/app/styles.css">
+<!-- viewer.js imports pdf.js at its top, so without these the two fetches are
+     serial: the browser cannot see the import until viewer.js has arrived and
+     been parsed. Declared here they go out together. -->
+<link rel="modulepreload" href="/app/viewer.js">
+<link rel="modulepreload" href="/vendor/pdf.min.mjs">
 </head>
 <body>
 

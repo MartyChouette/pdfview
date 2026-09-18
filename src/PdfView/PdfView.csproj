@@ -20,6 +20,17 @@
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <InvariantGlobalization>true</InvariantGlobalization>
+
+    <!-- Startup. WinForms' first-touch cost is almost all JIT, so the framework
+         and this assembly are compiled ahead of time. Not composite: that mode
+         is marginally faster warm but links the whole framework into one 87 MB
+         image, and the first launch after install then waits on the virus
+         scanner reading all of it. Measured at 6.2 s against 2.1 s. -->
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <TieredPGO>true</TieredPGO>
+    <AutoreleasePoolSupport>false</AutoreleasePoolSupport>
+    <EventSourceSupport>false</EventSourceSupport>
+    <MetadataUpdaterSupport>false</MetadataUpdaterSupport>
   </PropertyGroup>
 
   <ItemGroup>

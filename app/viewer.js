@@ -20,6 +20,16 @@ const $ = (id) => document.getElementById(id);
 const shell = (window.chrome && window.chrome.webview) || null;
 const tellShell = (message) => { if (shell) shell.postMessage(message); };
 
+/* Startup timing. The shell stamps each mark against the process start time,
+   which is the only clock that sees the part of the wait before this file ran. */
+const traced = new Set();
+const mark = (name) => {
+  if (traced.has(name)) return;
+  traced.add(name);
+  tellShell({ type: 'trace', mark: name });
+};
+mark('module evaluated');
+
 const el = {
   viewer: $('viewer'),
   container: $('viewer-container'),
@@ -140,6 +150,7 @@ async function loadDocument(params, source) {
     };
     const doc = await task.promise;
 
+    mark('pdf parsed');
     state.doc = doc;
     state.source = source;
     state.rotation = 0;
@@ -155,6 +166,7 @@ async function loadDocument(params, source) {
     await buildPages();
     setEnabled(true);
 
+    await recentsReady;   // the only thing in this open that needs the list
     const startPage = lastPageFor(source);
     applyFit(true);
     if (startPage > 1) goToPage(startPage);
@@ -443,6 +455,7 @@ async function renderPage(p) {
     if (stale()) return retryLater();
 
     p.rendered = true;
+    mark('first-paint');
     if (state.find.query) highlightPage(p);
   } catch (err) {
     if (err && err.name === 'RenderingCancelledException') return;
@@ -949,6 +962,11 @@ function rememberOpen() {
   }).then(loadRecents).catch(() => {});
 }
 
+/* Resolves once the recent list has arrived. Held here because the list is
+   fetched in parallel with opening a document but is needed at one precise
+   point in that open: the page the document was last left on. */
+let recentsReady = Promise.resolve();
+
 async function loadRecents() {
   try {
     const res = await fetch('/api/recent');
@@ -1387,6 +1405,7 @@ queueFit();
 /* ================= startup ================= */
 
 (async function start() {
+  mark('start');
   setTheme(prefs.get('theme', matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
   setInverted(prefs.get('inverted', false));
   setSpread(prefs.get('spread', 'off'));
@@ -1396,12 +1415,17 @@ queueFit();
   setEnabled(false);
   updateZoomSelect();
 
-  await loadRecents();
+  /* The recent list feeds a menu nobody has opened yet. Opening the document
+     is what the window is for, so the two go at once rather than in order. */
+  recentsReady = loadRecents().then(() => mark('recents loaded'));
 
   const params = new URLSearchParams(location.search);
   const path = params.get('path');
   if (path) {
     history.replaceState(null, '', '/');
     openByPath(path);
+  } else {
+    await recentsReady;
+    mark('idle');
   }
 })();

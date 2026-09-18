@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+- Explorer thumbnails no longer draw the pdfview mark into the corner. The
+  shell already composites the file association icon over the preview, so the
+  icon was showing up twice.
+- Faster launch. Median warm start to the first page on screen went from 988 ms
+  to 915 ms over 36 interleaved launches, from compiling ahead of time, opening
+  the window before the plumbing behind it, cutting Edge start-up work the
+  viewer has no use for, fetching pdf.js alongside the viewer instead of after
+  it, and reading the state file once per process instead of three times per
+  window.
+- The recent list no longer stats files on network paths or disconnected
+  drives. One entry on an unreachable share used to stall opening a document.
+- `PDFVIEW_TRACE=1` writes a startup timeline to
+  `%LOCALAPPDATA%\pdfview\trace.log`.
+
 ## 1.0.0
 
 First public release.

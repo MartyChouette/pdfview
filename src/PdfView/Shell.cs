@@ -22,15 +22,26 @@ static class Shell
 
     public static void Run(string? file)
     {
-        // A never-shown window gives background threads something to marshal onto.
+        // Locating the Edge runtime and preparing the user data folder needs no
+        // window, so it runs while the UI thread is still paying WinForms' one-off
+        // start-up cost.
+        _ = EnvironmentAsync();
+
+        // The window comes first. The browser process cannot start spawning until
+        // a window exists to host it, and everything below happens while it does.
+        _context = new ApplicationContext();
+        NewWindow(file);
+        Trace.Mark("window shown");
+
+        // A never-shown window gives background threads something to marshal onto
+        // that outlives any particular document window.
         _marshaller = new Form();
         _ = _marshaller.Handle;
 
         Ipc.OpenRequested += path => _marshaller.BeginInvoke(() => OpenFromAnotherLaunch(path));
         Ipc.StartServer(Cancel.Token);
+        Trace.Mark("ipc started");
 
-        _context = new ApplicationContext();
-        NewWindow(file);
         Application.Run(_context);
 
         Cancel.Cancel();
@@ -39,21 +50,42 @@ static class Shell
     public static Task<CoreWebView2Environment> EnvironmentAsync() =>
         _environment ??= CreateEnvironment();
 
-    static async Task<CoreWebView2Environment> CreateEnvironment()
-    {
-        var userData = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "pdfview", "WebView2");
-        Directory.CreateDirectory(userData);
+    /// Where Edge keeps this app's profile. Every environment in the process
+    /// must name the same folder and the same options or WebView2 refuses to
+    /// share one browser process between them, which is the entire point of
+    /// BrowserWarmup.
+    public static string UserDataFolder { get; } = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "pdfview", "WebView2");
 
-        var options = new CoreWebView2EnvironmentOptions
+    public static CoreWebView2EnvironmentOptions BrowserOptions() =>
+        new()
         {
-            // The viewer is the whole app; none of Edge's own UI belongs in it.
-            AdditionalBrowserArguments = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection",
+            // The first group turns off Edge's own UI, which the viewer replaces.
+            // The rest are start-up work this app has no use for: there is no
+            // first run to greet, no extensions, no sync account, and nothing
+            // for the browser to phone home about.
+            AdditionalBrowserArguments = string.Join(' ',
+                "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--disable-extensions",
+                "--disable-sync",
+                "--disable-background-networking",
+                "--disable-component-update",
+                "--disable-domain-reliability",
+                "--disable-breakpad"),
             AllowSingleSignOnUsingOSPrimaryAccount = false,
         };
 
-        return await CoreWebView2Environment.CreateAsync(null, userData, options);
+    static async Task<CoreWebView2Environment> CreateEnvironment()
+    {
+        Directory.CreateDirectory(UserDataFolder);
+        Trace.Mark("webview2 environment requested");
+        var environment = await CoreWebView2Environment.CreateAsync(
+            null, UserDataFolder, BrowserOptions());
+        Trace.Mark("webview2 environment ready");
+        return environment;
     }
 
     public static WebHost Host(CoreWebView2Environment environment) =>

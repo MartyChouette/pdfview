@@ -23,6 +23,7 @@ sealed class ViewerForm : Form
     public ViewerForm(string? file)
     {
         _startFile = file;
+        Trace.Mark("viewer form ctor");
 
         Text = "pdfview";
         Icon = AppIcon.Load();
@@ -34,6 +35,7 @@ sealed class ViewerForm : Form
 
         _web.DefaultBackgroundColor = BackColor;
         Controls.Add(_web);
+        Trace.Mark("viewer form built");
 
         DragEnter += OnDragEnter;
         DragOver += (_, e) => e.Effect = DragDropEffects.Copy;
@@ -46,12 +48,15 @@ sealed class ViewerForm : Form
     protected override async void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
+        Trace.Mark("form loaded");
         try
         {
             var environment = await Shell.EnvironmentAsync();
             await _web.EnsureCoreWebView2Async(environment);
+            Trace.Mark("corewebview2 ready");
             Configure(environment);
             _web.CoreWebView2.Navigate(Shell.Host(environment).UrlFor(_startFile));
+            Trace.Mark("navigate issued");
             CurrentFile = _startFile;
             _ready = true;
         }
@@ -154,6 +159,14 @@ sealed class ViewerForm : Form
 
             switch (root.TryGetProperty("type", out var type) ? type.GetString() : null)
             {
+                case "trace":
+                    if (root.TryGetProperty("mark", out var mark) && mark.GetString() is { } label)
+                    {
+                        Trace.Mark("page: " + label);
+                        if (label is "first-paint" or "idle") Trace.Dump();
+                    }
+                    break;
+
                 case "opened":
                     CurrentFile = root.TryGetProperty("path", out var path) ? path.GetString() : null;
                     break;
