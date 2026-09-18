@@ -37,6 +37,47 @@
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2792.45" />
   </ItemGroup>
 
+  <!-- A self-contained publish copies the whole Microsoft.WindowsDesktop.App
+       runtime pack, and that pack carries WPF next to WinForms. The WindowsForms
+       framework profile this project uses only filters the reference assemblies
+       the compiler sees, not the runtime pack, so 43 MB of WPF ships in a build
+       that never loads a line of it.
+
+       The list is deliberately narrow. Everything in it is WPF and only WPF.
+       Accessibility.dll, System.Windows.Forms.Design.dll, the four UIAutomation
+       assemblies and vcruntime140_cor3.dll all stay, because WinForms
+       accessibility can reach them and a screen reader is exactly the path that
+       testing does not cover.
+
+       Checked against the modules of the running process, after opening a
+       document and exercising the sidebar, find, rotate, invert, theme, both
+       native file dialogs, printing and a second window: none of these load. -->
+  <PropertyGroup>
+    <WpfOnlyAssemblies>;PresentationCore.dll;PresentationFramework.dll;PresentationUI.dll;PresentationNative_cor3.dll;WindowsBase.dll;System.Xaml.dll;ReachFramework.dll;System.Printing.dll;System.Windows.Controls.Ribbon.dll;System.Windows.Presentation.dll;WindowsFormsIntegration.dll;DirectWriteForwarder.dll;wpfgfx_cor3.dll;D3DCompiler_47_cor3.dll;PenImc_cor3.dll;PresentationFramework.Aero.dll;PresentationFramework.Aero2.dll;PresentationFramework.AeroLite.dll;PresentationFramework.Classic.dll;PresentationFramework.Luna.dll;PresentationFramework.Royale.dll;PresentationFramework-SystemCore.dll;PresentationFramework-SystemData.dll;PresentationFramework-SystemDrawing.dll;PresentationFramework-SystemXml.dll;PresentationFramework-SystemXmlLinq.dll;</WpfOnlyAssemblies>
+  </PropertyGroup>
+
+  <Target Name="TrimWpfFromPublish" AfterTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <ResolvedFileToPublish
+        Remove="@(ResolvedFileToPublish)"
+        Condition="$(WpfOnlyAssemblies.Contains(';%(Filename)%(Extension);'))" />
+    </ItemGroup>
+  </Target>
+
+  <!-- The WebView2 package ships a WinForms control and a WPF one side by side.
+       This app uses the WinForms one; copying the WPF assembly is what made the
+       compiler ask for the WPF reference set in the first place. -->
+  <Target Name="DropUnusedWebView2Wpf" AfterTargets="ResolveAssemblyReferences">
+    <ItemGroup>
+      <ReferenceCopyLocalPaths
+        Remove="@(ReferenceCopyLocalPaths)"
+        Condition="'%(Filename)' == 'Microsoft.Web.WebView2.Wpf'" />
+      <Reference
+        Remove="@(Reference)"
+        Condition="'%(Filename)' == 'Microsoft.Web.WebView2.Wpf'" />
+    </ItemGroup>
+  </Target>
+
   <ItemGroup>
     <!-- The window icon is read back out of the executable at run time. -->
     <EmbeddedResource Include="pdfview.ico" />
