@@ -3,8 +3,8 @@ using System.Runtime.InteropServices.ComTypes;
 
 namespace PdfThumb;
 
-/// Explorer's thumbnail handler for PDF files: the first page, with the pdfview
-/// mark badged into the bottom-right corner.
+/// Explorer's thumbnail handler for PDF files: the first page, and nothing
+/// else. The shell draws the file association icon over it on its own.
 ///
 /// Windows runs thumbnail handlers inside its own surrogate process, so a fault
 /// here cannot take Explorer down with it. Failures are swallowed and written to

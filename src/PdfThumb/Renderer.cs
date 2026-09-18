@@ -7,18 +7,10 @@ using Windows.Storage.Streams;
 
 namespace PdfThumb;
 
-/// Draws page one of a PDF and badges the pdfview mark into the corner.
+/// Draws page one of a PDF for the shell. Explorer composites the file
+/// association icon over what we hand back, so the page is left bare.
 internal static class Renderer
 {
-    /// The badge's width as a fraction of the thumbnail's width.
-    const float BadgeShare = 0.34f;
-
-    /// Gap between the badge and the page edges, as a fraction of the width.
-    const float BadgeMargin = 0.04f;
-
-    /// Below this the badge would be mush, so the page is left bare.
-    const int BadgeFloor = 40;
-
     public static IntPtr RenderFile(string path, int cx)
     {
         using var file = new FileStream(Path.GetFullPath(path), FileMode.Open, FileAccess.Read,
@@ -54,8 +46,6 @@ internal static class Renderer
             // A PDF page is paper: anything the page leaves transparent is white.
             g.Clear(Color.White);
             g.DrawImage(rendered, new Rectangle(0, 0, width, height));
-
-            if (Math.Min(width, height) >= BadgeFloor) DrawBadge(g, width, height);
         }
 
         return ToHBitmap(canvas);
@@ -92,44 +82,6 @@ internal static class Renderer
         stream.CopyTo(memory);
         memory.Position = 0;
         return new Bitmap(memory);
-    }
-
-    /* ---------- the badge ---------- */
-
-    static void DrawBadge(Graphics g, int width, int height)
-    {
-        var side = Math.Max(16, (int)Math.Round(width * BadgeShare));
-        using var badge = LoadBadge(side);
-        if (badge is null) return;
-
-        var margin = (int)Math.Round(width * BadgeMargin);
-        var x = width - badge.Width - margin;
-        var y = height - badge.Height - margin;
-
-        // A soft plate under the mark keeps it readable over a busy page.
-        using (var shadow = new SolidBrush(Color.FromArgb(38, 0, 0, 0)))
-        {
-            g.FillEllipse(shadow, x - 2, y - 1, badge.Width + 4, badge.Height + 4);
-        }
-
-        g.DrawImage(badge, new Rectangle(x, y, badge.Width, badge.Height));
-    }
-
-    static Bitmap? LoadBadge(int side)
-    {
-        using var stream = typeof(Renderer).Assembly.GetManifestResourceStream("PdfThumb.pdfview.ico");
-        if (stream is null) return null;
-
-        // The .ico carries several sizes; ask for the nearest and scale from there.
-        using var icon = new Icon(stream, side, side);
-        using var source = icon.ToBitmap();
-
-        var scaled = new Bitmap(side, side, PixelFormat.Format32bppArgb);
-        using var g = Graphics.FromImage(scaled);
-        g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-        g.PixelOffsetMode = PixelOffsetMode.HighQuality;
-        g.DrawImage(source, new Rectangle(0, 0, side, side));
-        return scaled;
     }
 
     /* ---------- handing it to the shell ---------- */
