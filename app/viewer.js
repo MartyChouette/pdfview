@@ -1040,8 +1040,7 @@ async function openDialog() {
 function printDocument() {
   if (!state.source) return;
   if (shell && state.source.kind === 'path') {
-    fetch('/api/print?path=' + encodeURIComponent(state.source.path)
-      + '&pages=' + state.pages.length).catch(() => {});
+    fetch('/api/print?path=' + encodeURIComponent(state.source.path)).catch(() => {});
     return;
   }
   const frame = document.createElement('iframe');

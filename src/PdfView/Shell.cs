@@ -109,10 +109,10 @@ static class Shell
     public static void OpenWindowLater(string? file) =>
         _marshaller?.BeginInvoke(() => NewWindow(file));
 
-    public static void PrintLater(string? file, int pageCount)
+    public static void PrintLater(string? file)
     {
         if (string.IsNullOrWhiteSpace(file)) return;
-        _marshaller?.BeginInvoke(() => new PrintForm(file, pageCount).Show());
+        _marshaller?.BeginInvoke(() => new PrintForm(file).Show());
     }
 
     /// A second launch handed us a file. Reuse a window already showing it,

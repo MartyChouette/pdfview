@@ -1,31 +1,46 @@
 using System.Drawing;
-using System.Drawing.Printing;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
 namespace PdfView;
 
 /// Printing goes through a plain view of the PDF rather than the rendered
-/// canvases, so the printer gets the document's own vectors and text. The
-/// printer is chosen in a native dialog and the page is printed bare: no URL
-/// stamped across the header and footer.
+/// canvases, so the printer gets the document's own vectors and text, printed
+/// bare with no URL stamped across the header and footer.
+///
+/// The print dialog is Edge's rather than Windows', because it is the only one
+/// of the two that shows a preview. Windows' own dialog asks the host for
+/// preview pages through the WinRT print stack, WebView2 has no way to supply
+/// them, and it reports "This app doesn't support print preview" instead.
+///
+/// The alternative would be to render the preview pages here and drive the
+/// WinRT printer ourselves, which would mean sending the printer rasterised
+/// pages instead of the document's own vectors and text. Not worth a preview.
+///
+/// This window sits behind the dialog showing the document, and Escape closes
+/// it once the dialog is gone.
 sealed class PrintForm : Form
 {
     readonly WebView2 _web = new() { Dock = DockStyle.Fill };
     readonly string _file;
-    readonly int _pageCount;
     bool _asked;
 
-    public PrintForm(string file, int pageCount)
+    public PrintForm(string file)
     {
         _file = file;
-        _pageCount = pageCount;
 
         Text = "Print - " + Path.GetFileName(file);
         Icon = AppIcon.Load();
         StartPosition = FormStartPosition.CenterScreen;
-        Size = new Size(760, 900);
-        MinimumSize = new Size(480, 360);
+        // The print preview lives inside this window, so the window is how big
+        // the preview gets to be. A fixed 760x900 left the page thumbnail
+        // postage-stamp sized. Take most of the work area instead, capped so it
+        // does not swallow a large monitor.
+        var work = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1280, 800);
+        Size = new Size(
+            Math.Min(1500, (int)(work.Width * 0.82)),
+            Math.Min(1100, (int)(work.Height * 0.88)));
+        MinimumSize = new Size(640, 480);
         BackColor = Color.FromArgb(0x32, 0x32, 0x32);
 
         _web.DefaultBackgroundColor = BackColor;
@@ -50,7 +65,9 @@ sealed class PrintForm : Form
             {
                 if (_asked) return;
                 _asked = true;
-                await AskAndPrint(environment, core);
+                Text = "Print - " + Path.GetFileName(_file);
+                await WaitForPagesAsync(core);
+                core.ShowPrintUI(CoreWebView2PrintDialogKind.Browser);
             };
 
             core.Navigate(WebHost.Origin + "/api/file?path=" + Uri.EscapeDataString(_file));
@@ -62,63 +79,43 @@ sealed class PrintForm : Form
         }
     }
 
-    async Task AskAndPrint(CoreWebView2Environment environment, CoreWebView2 core)
+    /// NavigationCompleted fires when the PDF has arrived, not when it has been
+    /// laid out. Opening the print preview at that moment previews a document
+    /// with no pages in it yet, which Edge reports as one blank sheet. So wait
+    /// for the viewer to report a page count before asking for the preview.
+    ///
+    /// The old flow got away with this by accident: it put up a printer picker
+    /// first, and the document had finished laying out by the time anyone chose
+    /// a printer and pressed OK.
+    static async Task WaitForPagesAsync(CoreWebView2 core)
     {
-        using var dialog = new PrintDialog
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (DateTime.UtcNow < deadline)
         {
-            AllowPrintToFile = true,
-            AllowSelection = false,
-            AllowSomePages = _pageCount > 1,
-            UseEXDialog = true,
-        };
-        dialog.PrinterSettings.MinimumPage = 1;
-        dialog.PrinterSettings.MaximumPage = Math.Max(1, _pageCount);
-        dialog.PrinterSettings.FromPage = 1;
-        dialog.PrinterSettings.ToPage = Math.Max(1, _pageCount);
-
-        if (dialog.ShowDialog(this) != DialogResult.OK)
-        {
-            Close();
-            return;
-        }
-
-        var chosen = dialog.PrinterSettings;
-        var settings = environment.CreatePrintSettings();
-        settings.ShouldPrintHeaderAndFooter = false;
-        settings.PrinterName = chosen.PrinterName;
-        settings.Copies = Math.Max(1, (int)chosen.Copies);
-        settings.Collation = chosen.Collate
-            ? CoreWebView2PrintCollation.Collated
-            : CoreWebView2PrintCollation.Uncollated;
-        settings.Orientation = chosen.DefaultPageSettings.Landscape
-            ? CoreWebView2PrintOrientation.Landscape
-            : CoreWebView2PrintOrientation.Portrait;
-        settings.ColorMode = chosen.DefaultPageSettings.Color
-            ? CoreWebView2PrintColorMode.Color
-            : CoreWebView2PrintColorMode.Grayscale;
-
-        if (chosen.PrintRange == PrintRange.SomePages)
-        {
-            settings.PageRanges = chosen.FromPage + "-" + chosen.ToPage;
-        }
-
-        try
-        {
-            var status = await core.PrintAsync(settings);
-            if (status != CoreWebView2PrintStatus.Succeeded)
+            try
             {
-                MessageBox.Show(this,
-                    status == CoreWebView2PrintStatus.PrinterUnavailable
-                        ? "That printer is unavailable."
-                        : "The document could not be printed.",
-                    "pdfview", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                var ready = await core.ExecuteScriptAsync("document.readyState");
+                if (ready is "\"complete\"")
+                {
+                    // Laying the first pages out lags readyState a little.
+                    await Task.Delay(400);
+                    return;
+                }
             }
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show(this, ex.Message, "pdfview", MessageBoxButtons.OK, MessageBoxIcon.Error);
-        }
+            catch
+            {
+                // The window went away mid-wait; the caller will find out.
+                return;
+            }
 
-        Close();
+            await Task.Delay(120);
+        }
     }
+
+    protected override bool ProcessCmdKey(ref Message message, Keys key)
+    {
+        if (key == Keys.Escape) { Close(); return true; }
+        return base.ProcessCmdKey(ref message, key);
+    }
+
 }

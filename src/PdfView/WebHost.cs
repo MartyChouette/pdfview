@@ -89,7 +89,7 @@ sealed partial class WebHost
                     return;
 
                 case "/api/print":
-                    Shell.PrintLater(query["path"], ParseCount(query["pages"]));
+                    Shell.PrintLater(query["path"]);
                     e.Response = Json(new { ok = true });
                     return;
 
@@ -333,9 +333,6 @@ sealed partial class WebHost
             }
         });
     }
-
-    static int ParseCount(string? value) =>
-        int.TryParse(value, out var count) && count > 0 ? count : 1;
 
     static void Reveal(string? path)
     {
