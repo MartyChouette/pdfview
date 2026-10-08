@@ -175,6 +175,20 @@
   <button id="help-close" class="btn">Close</button>
 </dialog>
 
+<dialog id="password-dialog" class="help-dialog password-dialog">
+  <h2>Password required</h2>
+  <p id="password-text"></p>
+  <form method="dialog">
+    <input id="password-input" type="password" autocomplete="off" aria-label="Password">
+    <div class="buttons">
+      <button id="password-cancel" class="btn" type="button">Cancel</button>
+      <button class="btn primary" value="ok">Open</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="print-pages"></div>
+
 <input id="file-input" type="file" accept="application/pdf,.pdf" multiple hidden>
 
 <script type="module" src="/app/viewer.js"></script>

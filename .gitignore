@@ -3,6 +3,8 @@ dist/
 release/
 bin/
 obj/
+target/
+src/tauri/gen/
 
 # Visual Studio / Rider
 .vs/

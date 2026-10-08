@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- macOS and Linux builds. The same viewer in a second host, `src/tauri`, around
+  the system webview: a universal `.dmg` for macOS 11 and newer, and `.deb`,
+  `.rpm` and `.AppImage` for x64 Linux. Opening from the file manager, one
+  process for every window, recent files, drag and drop, save a copy and
+  printing all work as they do on Windows. Printing there sends pages as
+  200 dpi images rather than the document's own vectors.
 - Explorer thumbnails no longer draw the pdfview mark into the corner. The
   shell already composites the file association icon over the preview, so the
   icon was showing up twice.

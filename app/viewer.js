@@ -12,13 +12,26 @@ const FONT_URL = '/vendor/standard_fonts/';
 const RENDER_MARGIN = 1;          // pages rendered either side of the viewport
 const MAX_CANVAS_PIXELS = 24e6;   // guard against absurd canvas allocations
 const PAGE_GAP = 16;
+const PRINT_DPI = 200;            // resolution of pages rasterised for printing
+const PRINT_MAX_PIXELS = 16e6;    // WebKit refuses canvases much past this
+const WHEEL_NOTCH = 30;           // trackpad wheel travel that counts as one zoom step
+const PINCH_INTERVAL = 80;        // ms between re-layouts while pinching
 
 const $ = (id) => document.getElementById(id);
 
-/* The Windows app hosts this page in a WebView2. In a plain browser there is
-   no shell and every one of these calls quietly does nothing. */
-const shell = (window.chrome && window.chrome.webview) || null;
-const tellShell = (message) => { if (shell) shell.postMessage(message); };
+/* The Windows app hosts this page in a WebView2. The macOS and Linux app hosts
+   it in the system webview, which has no message channel of its own, so there
+   the page reaches the shell through the same /api it already fetches from.
+   In a plain browser there is no shell and every one of these calls quietly
+   does nothing. */
+const webview2 = (window.chrome && window.chrome.webview) || null;
+const native = location.protocol === 'pdfview:' || location.hostname === 'pdfview.localhost';
+const shell = webview2 || native;
+const tellShell = (message) => {
+  if (webview2) webview2.postMessage(message);
+  else if (native) fetch('/api/message?json=' + encodeURIComponent(JSON.stringify(message))).catch(() => {});
+};
+const isMac = /Mac/.test(navigator.platform);
 
 /* Startup timing. The shell stamps each mark against the process start time,
    which is the only clock that sees the part of the wait before this file ran. */
@@ -118,11 +131,53 @@ function debounce(fn, ms) {
 
 /* ================= document loading ================= */
 
+/* How pdf.js reads a document on macOS and Linux. Their webviews answer a
+   request with a finished block of bytes, not a stream, so handing pdf.js the
+   file's URL would pull the whole file into memory before the first page. This
+   asks for the size first and then only for the ranges pdf.js wants. */
+class HostRange extends pdfjsLib.PDFDataRangeTransport {
+  constructor(length, query) {
+    super(length, null);
+    this.query = query;
+  }
+
+  static async open(filePath) {
+    const query = 'path=' + encodeURIComponent(filePath);
+    const res = await fetch('/api/stat?' + query);
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || 'File not found');
+    return new HostRange(body.size, query);
+  }
+
+  requestDataRange(begin, end) {
+    fetch('/api/chunk?' + this.query + '&start=' + begin + '&end=' + end)
+      .then((res) => {
+        if (!res.ok) throw new Error('read failed at byte ' + begin);
+        return res.arrayBuffer();
+      })
+      .then((chunk) => this.onDataRange(begin, new Uint8Array(chunk)))
+      .catch((err) => {
+        console.error(err);
+        toast('Could not read the file: ' + err.message, true);
+      });
+  }
+}
+
 async function openByPath(filePath) {
   const url = '/api/file?path=' + encodeURIComponent(filePath);
   const name = filePath.split(/[\\/]/).pop();
-  await loadDocument({ url, cMapUrl: CMAP_URL, cMapPacked: true, standardFontDataUrl: FONT_URL },
-    { kind: 'path', path: filePath, name, url });
+  const params = { cMapUrl: CMAP_URL, cMapPacked: true, standardFontDataUrl: FONT_URL };
+  if (native) {
+    try {
+      params.range = await HostRange.open(filePath);
+    } catch (err) {
+      toast('Could not open ' + name + ': ' + err.message, true);
+      return;
+    }
+  } else {
+    params.url = url;
+  }
+  await loadDocument(params, { kind: 'path', path: filePath, name, url });
 }
 
 async function openLocalFile(file) {
@@ -130,6 +185,23 @@ async function openLocalFile(file) {
   const url = URL.createObjectURL(file);
   await loadDocument({ data: new Uint8Array(data), cMapUrl: CMAP_URL, cMapPacked: true, standardFontDataUrl: FONT_URL },
     { kind: 'file', name: file.name, size: file.size, url });
+}
+
+/* Asked in the page rather than with window.prompt, which the macOS webview
+   answers with null without showing anything. Resolves to null on cancel. */
+function askPassword(message) {
+  const dialog = $('password-dialog');
+  const input = $('password-input');
+  $('password-text').textContent = message;
+  input.value = '';
+  dialog.returnValue = '';
+  return new Promise((resolve) => {
+    dialog.addEventListener('close', () => {
+      resolve(dialog.returnValue === 'ok' ? input.value : null);
+    }, { once: true });
+    dialog.showModal();
+    input.focus();
+  });
 }
 
 async function loadDocument(params, source) {
@@ -141,12 +213,13 @@ async function loadDocument(params, source) {
     }
     const task = pdfjsLib.getDocument(params);
     task.onPassword = (updateCallback, reason) => {
-      const prompt = reason === pdfjsLib.PasswordResponses.INCORRECT_PASSWORD
-        ? 'Incorrect password. Try again:'
-        : 'This document is password protected. Password:';
-      const password = window.prompt(prompt);
-      if (password === null) task.destroy();
-      else updateCallback(password);
+      const message = reason === pdfjsLib.PasswordResponses.INCORRECT_PASSWORD
+        ? 'Incorrect password. Try again.'
+        : 'This document is password protected.';
+      askPassword(message).then((password) => {
+        if (password === null) task.destroy();
+        else updateCallback(password);
+      });
     };
     const doc = await task.promise;
 
@@ -496,6 +569,12 @@ async function buildLinkLayer(page, viewport, pageDiv) {
       link.target = '_blank';
       link.rel = 'noreferrer noopener';
       link.title = a.url;
+      if (native) {
+        link.addEventListener('click', (ev) => {
+          ev.preventDefault();
+          openExternal(a.url);
+        });
+      }
     } else {
       link.href = '#';
       link.title = 'Go to destination';
@@ -507,6 +586,14 @@ async function buildLinkLayer(page, viewport, pageDiv) {
     layer.append(link);
   }
   pageDiv.append(layer);
+}
+
+/* WebView2 turns a new-window request into an event the Windows shell sends to
+   the browser. The other webviews have no such event, so there the shell is
+   asked directly. */
+function openExternal(url) {
+  if (native) fetch('/api/external?url=' + encodeURIComponent(url)).catch(() => {});
+  else window.open(url, '_blank', 'noreferrer');
 }
 
 async function goToDestination(dest) {
@@ -679,7 +766,7 @@ async function buildOutline() {
       btn.title = item.title || '';
       btn.addEventListener('click', () => {
         if (item.dest) goToDestination(item.dest);
-        else if (item.url) window.open(item.url, '_blank', 'noreferrer');
+        else if (item.url) openExternal(item.url);
       });
       parent.append(btn);
       if (item.items && item.items.length) {
@@ -950,16 +1037,22 @@ const savePosition = debounce(() => {
 
 function rememberOpen() {
   if (!state.source || state.source.kind !== 'path') return;
-  fetch('/api/recent', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      path: state.source.path,
-      name: state.source.name,
-      page: state.current,
-      pages: state.pages.length,
-    }),
-  }).then(loadRecents).catch(() => {});
+  const item = JSON.stringify({
+    path: state.source.path,
+    name: state.source.name,
+    page: state.current,
+    pages: state.pages.length,
+  });
+  /* WebKitGTK does not reliably pass a request body to the shell, so there the
+     entry rides in the query. */
+  const saved = native
+    ? fetch('/api/recent?remember=' + encodeURIComponent(item))
+    : fetch('/api/recent', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: item,
+    });
+  saved.then(loadRecents).catch(() => {});
 }
 
 /* Resolves once the recent list has arrived. Held here because the list is
@@ -1037,8 +1130,90 @@ async function openDialog() {
   el.fileInput.click();
 }
 
+/* Printing on macOS and Linux. Their webviews have no PDF plug-in to hand the
+   file to, so every page is drawn to an image at PRINT_DPI, the images are
+   laid out one to a sheet (see #print-pages in styles.css), and the shell is
+   asked to print the window. The printer gets pixels, not the document's own
+   vectors. */
+let printUrls = [];
+
+function clearPrintPages() {
+  for (const url of printUrls) URL.revokeObjectURL(url);
+  printUrls = [];
+  $('print-pages').textContent = '';
+  document.documentElement.classList.remove('print-ready');
+}
+
+async function printRasterised() {
+  const doc = state.doc;
+  const total = state.pages.length;
+  const box = $('print-pages');
+  clearPrintPages();
+
+  let sheet = $('print-size');
+  if (!sheet) {
+    sheet = document.createElement('style');
+    sheet.id = 'print-size';
+    document.head.append(sheet);
+  }
+
+  try {
+    for (let i = 1; i <= total; i++) {
+      busy(true, 'Preparing page ' + i + ' / ' + total);
+      const page = await doc.getPage(i);
+      if (state.doc !== doc) return;   // another document was opened meanwhile
+      const rotation = (page.rotate + state.rotation) % 360;
+      const base = page.getViewport({ scale: 1, rotation });
+      if (i === 1) {
+        sheet.textContent = '@page { size: ' + base.width + 'pt ' + base.height + 'pt; margin: 0; }';
+      }
+
+      let scale = PRINT_DPI / 72;
+      const pixels = base.width * base.height * scale * scale;
+      if (pixels > PRINT_MAX_PIXELS) scale *= Math.sqrt(PRINT_MAX_PIXELS / pixels);
+      const viewport = page.getViewport({ scale, rotation });
+
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.floor(viewport.width);
+      canvas.height = Math.floor(viewport.height);
+      await page.render({
+        canvasContext: canvas.getContext('2d', { alpha: false }),
+        viewport,
+        intent: 'print',
+        background: '#ffffff',
+      }).promise;
+
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+      canvas.width = 0;   // hand the pixels back now rather than at the next collection
+      canvas.height = 0;
+      if (!blob) throw new Error('page ' + i + ' could not be drawn');
+
+      const url = URL.createObjectURL(blob);
+      printUrls.push(url);
+      const img = new Image();
+      img.src = url;
+      await img.decode().catch(() => {});
+      const div = document.createElement('div');
+      div.className = 'print-page';
+      div.append(img);
+      box.append(div);
+    }
+    document.documentElement.classList.add('print-ready');
+    await fetch('/api/print');
+  } catch (err) {
+    console.error(err);
+    toast('Could not print: ' + (err && err.message ? err.message : err), true);
+  } finally {
+    busy(false);
+  }
+}
+
 function printDocument() {
   if (!state.source) return;
+  if (native) {
+    printRasterised();
+    return;
+  }
   if (shell && state.source.kind === 'path') {
     fetch('/api/print?path=' + encodeURIComponent(state.source.path)).catch(() => {});
     return;
@@ -1093,6 +1268,22 @@ function setInverted(on) {
   prefs.set('inverted', on);
 }
 
+/* Older WebKit only has the prefixed calls, and a webview may refuse the
+   request outright. When it does, the shell puts the window fullscreen. */
+function toggleFullscreen() {
+  const root = document.documentElement;
+  if (document.fullscreenElement || document.webkitFullscreenElement) {
+    (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    return;
+  }
+  const request = root.requestFullscreen || root.webkitRequestFullscreen;
+  if (!request) {
+    tellShell({ type: 'fullscreen' });
+    return;
+  }
+  Promise.resolve(request.call(root)).catch(() => tellShell({ type: 'fullscreen' }));
+}
+
 /* The window handles Explorer drops itself, because only it gets real file
    paths out of them, and it drives the overlay and the open through here. */
 window.pdfviewHost = {
@@ -1118,6 +1309,7 @@ $('btn-theme').addEventListener('click', () => {
 $('btn-invert').addEventListener('click', () => setInverted(!document.body.classList.contains('inverted')));
 $('btn-help').addEventListener('click', () => el.helpDialog.showModal());
 $('help-close').addEventListener('click', () => el.helpDialog.close());
+$('password-cancel').addEventListener('click', () => $('password-dialog').close());
 
 $('btn-rotate').addEventListener('click', async () => {
   if (!state.doc) return;
@@ -1216,12 +1408,43 @@ window.addEventListener('drop', (ev) => {
   openLocalFile(file);
 });
 
-/* ctrl + wheel zoom */
+/* ctrl + wheel zoom. In WebView2 every wheel event is a step. The other
+   webviews send a trackpad's travel as a stream of small deltas, so there the
+   deltas are summed until they amount to a notch. */
+let wheelTravel = 0;
 el.container.addEventListener('wheel', (ev) => {
-  if (!ev.ctrlKey || !state.doc) return;
+  if (!(ev.ctrlKey || (native && ev.metaKey)) || !state.doc) return;
   ev.preventDefault();
-  zoomBy(ev.deltaY < 0 ? 1 : -1);
+  if (!native) {
+    zoomBy(ev.deltaY < 0 ? 1 : -1);
+    return;
+  }
+  wheelTravel += ev.deltaMode === 1 ? ev.deltaY * WHEEL_NOTCH : ev.deltaY;
+  if (Math.abs(wheelTravel) < WHEEL_NOTCH) return;
+  zoomBy(wheelTravel < 0 ? 1 : -1);
+  wheelTravel = 0;
 }, { passive: false });
+
+/* Trackpad pinch on macOS. WebKit reports it as gesture events of its own
+   rather than as ctrl + wheel. */
+let pinchFrom = 1;
+let pinchTo = 1;
+let pinchTimer = 0;
+el.container.addEventListener('gesturestart', (ev) => {
+  ev.preventDefault();
+  pinchFrom = state.scale;
+});
+el.container.addEventListener('gesturechange', (ev) => {
+  ev.preventDefault();
+  if (!state.doc) return;
+  pinchTo = pinchFrom * ev.scale;
+  if (pinchTimer) return;
+  pinchTimer = setTimeout(() => {
+    pinchTimer = 0;
+    setScale(pinchTo);
+  }, PINCH_INTERVAL);
+});
+el.container.addEventListener('gestureend', (ev) => ev.preventDefault());
 
 /* keyboard */
 document.addEventListener('keydown', (ev) => {
@@ -1320,8 +1543,7 @@ document.addEventListener('keydown', (ev) => {
       break;
     case 'f':
     case 'F':
-      if (document.fullscreenElement) document.exitFullscreen();
-      else document.documentElement.requestFullscreen().catch(() => {});
+      toggleFullscreen();
       break;
     case '?':
       el.helpDialog.showModal();
@@ -1405,6 +1627,14 @@ queueFit();
 
 (async function start() {
   mark('start');
+  if (isMac) {
+    for (const cell of el.helpDialog.querySelectorAll('td:first-child')) {
+      cell.textContent = cell.textContent.replace(/Ctrl/g, 'Cmd');
+    }
+    for (const node of document.querySelectorAll('[title*="Ctrl+"]')) {
+      node.title = node.title.replace('Ctrl+', 'Cmd+');
+    }
+  }
   setTheme(prefs.get('theme', matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
   setInverted(prefs.get('inverted', false));
   setSpread(prefs.get('spread', 'off'));

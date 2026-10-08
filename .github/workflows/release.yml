@@ -1,6 +1,6 @@
 name: Release
 
-# Push a tag like v1.0.0 and this builds both downloads and publishes the
+# Push a tag like v1.0.0 and this builds every download and publishes the
 # release. Run it by hand from the Actions tab to just check that it builds.
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  windows:
     runs-on: windows-latest
 
     steps:
@@ -62,13 +62,151 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: packages
+          name: windows
           path: '*.zip'
 
+  # One app for Apple silicon and Intel. Signed and notarised when the six
+  # APPLE_* secrets are set (see README), unsigned otherwise.
+  macos:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src/tauri
+
+      - name: Work out the version
+        id: version
+        run: |
+          case "$GITHUB_REF" in
+            refs/tags/v*) version="${GITHUB_REF#refs/tags/v}" ;;
+            *) version="0.0.0" ;;
+          esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Building $version"
+
+      - name: Install the Tauri CLI
+        run: command -v cargo-tauri || cargo install tauri-cli --version '^2' --locked
+
+      # Only exported when they exist: an empty APPLE_CERTIFICATE makes the
+      # bundler try to import nothing and fail.
+      - name: Load the signing identity
+        env:
+          CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          NOTARY_ID: ${{ secrets.APPLE_ID }}
+          NOTARY_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -z "$CERTIFICATE" ]; then
+            echo "No APPLE_CERTIFICATE secret. Building unsigned."
+            exit 0
+          fi
+          {
+            echo "APPLE_CERTIFICATE<<PDFVIEW_EOF"
+            echo "$CERTIFICATE"
+            echo "PDFVIEW_EOF"
+            echo "APPLE_CERTIFICATE_PASSWORD=$CERTIFICATE_PASSWORD"
+            echo "APPLE_SIGNING_IDENTITY=$SIGNING_IDENTITY"
+          } >> "$GITHUB_ENV"
+          if [ -n "$NOTARY_ID" ]; then
+            {
+              echo "APPLE_ID=$NOTARY_ID"
+              echo "APPLE_PASSWORD=$NOTARY_PASSWORD"
+              echo "APPLE_TEAM_ID=$TEAM_ID"
+            } >> "$GITHUB_ENV"
+          else
+            echo "No APPLE_ID secret. Signing without notarising."
+          fi
+
+      - name: Build the app
+        working-directory: src/tauri
+        run: |
+          v='${{ steps.version.outputs.version }}'
+          cargo tauri build --target universal-apple-darwin --bundles app,dmg \
+            --config "{\"version\":\"$v\"}"
+          cp target/universal-apple-darwin/release/bundle/dmg/*.dmg \
+            "$GITHUB_WORKSPACE/pdfview-$v-macos-universal.dmg"
+          ls -lh "$GITHUB_WORKSPACE"/*.dmg
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: '*.dmg'
+
+  # Built on the oldest runner still offered, because a binary linked against
+  # an old glibc runs on newer ones and not the other way round.
+  linux:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential file pkg-config libssl-dev \
+            libwebkit2gtk-4.1-dev libxdo-dev libayatana-appindicator3-dev librsvg2-dev rpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src/tauri
+
+      - name: Work out the version
+        id: version
+        run: |
+          case "$GITHUB_REF" in
+            refs/tags/v*) version="${GITHUB_REF#refs/tags/v}" ;;
+            *) version="0.0.0" ;;
+          esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Building $version"
+
+      - name: Install the Tauri CLI
+        run: command -v cargo-tauri || cargo install tauri-cli --version '^2' --locked
+
+      - name: Build the packages
+        working-directory: src/tauri
+        run: |
+          v='${{ steps.version.outputs.version }}'
+          cargo tauri build --bundles deb,rpm,appimage --config "{\"version\":\"$v\"}"
+          bundle=target/release/bundle
+          cp $bundle/deb/*.deb "$GITHUB_WORKSPACE/pdfview-$v-linux-x64.deb"
+          cp $bundle/rpm/*.rpm "$GITHUB_WORKSPACE/pdfview-$v-linux-x64.rpm"
+          cp $bundle/appimage/*.AppImage "$GITHUB_WORKSPACE/pdfview-$v-linux-x64.AppImage"
+          ls -lh "$GITHUB_WORKSPACE"/pdfview-*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: |
+            *.deb
+            *.rpm
+            *.AppImage
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, macos, linux]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: downloads
+          merge-multiple: true
+
       - name: Publish the release
-        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: '*.zip'
+          files: downloads/*
           draft: true
           generate_release_notes: true

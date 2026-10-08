@@ -465,4 +465,47 @@ body.inverted .page { background: #111; }
 .help-dialog td { padding: 3px 18px 3px 0; }
 .help-dialog td:first-child { color: var(--text-dim); white-space: nowrap; }
 
+.password-dialog p { margin: 0 0 12px; color: var(--text-dim); }
+.password-dialog input {
+  display: block;
+  width: 280px;
+  height: 30px;
+  margin-bottom: 16px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+.password-dialog input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.password-dialog .buttons { display: flex; justify-content: flex-end; gap: 8px; }
+
 @media print { .toolbar, .findbar, .sidebar, .dropzone { display: none !important; } }
+
+/* Printing on macOS and Linux, where the webview has no PDF plug-in to hand
+   the file to. viewer.js fills #print-pages with one image per page and sets
+   print-ready once they are all there. */
+#print-pages { display: none; }
+@media print {
+  html.print-ready, html.print-ready body {
+    display: block;
+    height: 100%;
+    overflow: visible;
+    background: #fff;
+  }
+  html.print-ready body > :not(#print-pages) { display: none !important; }
+  html.print-ready #print-pages { display: block; height: 100%; }
+  html.print-ready .print-page {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    page-break-after: always;
+    page-break-inside: avoid;
+  }
+  html.print-ready .print-page:last-child { page-break-after: auto; }
+  html.print-ready .print-page img { display: block; max-width: 100%; max-height: 100%; }
+}

@@ -1,0 +1,48 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "pdfview",
+  "version": "1.0.0",
+  "identifier": "io.github.martychouette.pdfview",
+  "app": {
+    "windows": [],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "Productivity",
+    "shortDescription": "A lightweight PDF reader",
+    "longDescription": "Continuous scrolling, selectable text, search, outline and thumbnails. It does not edit, annotate, sign or fill in forms. It reads.",
+    "copyright": "MIT licence",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "fileAssociations": [
+      {
+        "ext": ["pdf"],
+        "name": "PDF Document",
+        "description": "PDF Document",
+        "mimeType": "application/pdf",
+        "role": "Viewer"
+      }
+    ],
+    "macOS": {
+      "minimumSystemVersion": "11.0"
+    },
+    "linux": {
+      "deb": {
+        "section": "text",
+        "desktopTemplate": "pdfview.desktop"
+      },
+      "rpm": {
+        "desktopTemplate": "pdfview.desktop"
+      }
+    }
+  }
+}
