@@ -4,7 +4,17 @@
 
 A lightweight PDF reader for Windows, macOS and Linux.
 
-![pdfview showing a two-page spread](docs/screenshot.png)
+**Windows**
+
+![pdfview on Windows showing a two-page spread](docs/screenshot-windows.png)
+
+**macOS**
+
+![pdfview on macOS showing a two-page spread](docs/screenshot-macos.png)
+
+**Linux**
+
+![pdfview on Linux showing a two-page spread](docs/screenshot-linux.png)
 
 ## What it does
 
