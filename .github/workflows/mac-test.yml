@@ -25,7 +25,7 @@ jobs:
         run: |
           run="${{ inputs.run }}"
           if [ -z "$run" ]; then
-            run=$(gh run list --workflow release.yml --status success --limit 1 --json databaseId -q '.[0].databaseId')
+            run=$(gh run list --workflow release.yml --limit 30 --json databaseId,conclusion,createdAt               -q '[.[] | select(.conclusion == "success")] | sort_by(.createdAt) | last | .databaseId')
           fi
           echo "Release run $run"
           gh run download "$run" -n macos -D dmg
