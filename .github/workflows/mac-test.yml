@@ -55,6 +55,30 @@ jobs:
           screencapture -x out/1-opened.png
           pgrep -lf pdfview.app | tee out/processes-1.txt
 
+      # For the README: the two-page spread, as a picture of the window alone.
+      - name: Screenshot of the window
+        run: |
+          keys() { osascript -e "tell application \"System Events\" to $1" 2>&1 || true; sleep 1; }
+          osascript -e 'tell application "pdfview" to activate' || true
+          sleep 1
+          keys 'keystroke "d"'
+          keys 'keystroke "0"'
+          keys 'key code 121'
+          sleep 2
+          screencapture -x out/3-spread-screen.png
+          cat > winid.swift <<'SWIFT'
+          import CoreGraphics
+          let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as! [[String: Any]]
+          for w in list where (w["kCGWindowOwnerName"] as? String) == "pdfview" && (w["kCGWindowLayer"] as? Int) == 0 {
+            print(w["kCGWindowNumber"]!)
+            break
+          }
+          SWIFT
+          id=$(swift winid.swift || true)
+          echo "window id: $id"
+          [ -n "$id" ] && screencapture -x -l "$id" out/3-spread-window.png || true
+          system_profiler SPDisplaysDataType | grep -i resolution || true
+
       - name: Open a second PDF in the running app
         run: |
           open -a "$HOME/pdfview.app" "$PWD/docs/INTERNALS.pdf"
