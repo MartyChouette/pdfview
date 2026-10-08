@@ -1,0 +1,77 @@
+name: Mac test
+
+# Runs the macOS build on a real Mac and saves screenshots of it, for when
+# there is no Mac to hand. It takes the .dmg from a finished Release run
+# instead of building again.
+
+on:
+  push:
+    branches: [mac-test]
+  workflow_dispatch:
+    inputs:
+      run:
+        description: Release run to take the .dmg from (empty for the latest)
+        required: false
+
+jobs:
+  test:
+    runs-on: macos-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch the .dmg
+        run: |
+          run="${{ inputs.run }}"
+          if [ -z "$run" ]; then
+            run=$(gh run list --workflow release.yml --status success --limit 1 --json databaseId -q '.[0].databaseId')
+          fi
+          echo "Release run $run"
+          gh run download "$run" -n macos -D dmg
+          ls -lh dmg
+
+      - name: Install it
+        run: |
+          hdiutil attach dmg/*.dmg -nobrowse -mountpoint /Volumes/pdfview-test
+          ls -la /Volumes/pdfview-test
+          cp -R /Volumes/pdfview-test/pdfview.app "$HOME/pdfview.app"
+          hdiutil detach /Volumes/pdfview-test
+          mkdir -p out
+          {
+            echo "== architectures"; lipo -info "$HOME/pdfview.app/Contents/MacOS/pdfview"
+            echo "== signature";     codesign -dv --verbose=2 "$HOME/pdfview.app" 2>&1 || true
+            echo "== verify";        codesign --verify --deep --strict "$HOME/pdfview.app" 2>&1 || true
+            echo "== gatekeeper";    spctl -a -vv "$HOME/pdfview.app" 2>&1 || true
+            echo "== document types"; plutil -p "$HOME/pdfview.app/Contents/Info.plist"
+          } | tee out/bundle.txt
+
+      # The way Finder does it: the file arrives as an open-document event, not
+      # as an argument.
+      - name: Open a PDF the way Finder does
+        run: |
+          open -a "$HOME/pdfview.app" --env PDFVIEW_TRACE=1 --stderr "$PWD/out/trace.log" "$PWD/docs/sample.pdf"
+          sleep 12
+          screencapture -x out/1-opened.png
+          pgrep -lf pdfview.app | tee out/processes-1.txt
+
+      - name: Open a second PDF in the running app
+        run: |
+          open -a "$HOME/pdfview.app" "$PWD/docs/INTERNALS.pdf"
+          sleep 8
+          screencapture -x out/2-second-window.png
+          pgrep -lf pdfview.app | tee out/processes-2.txt
+
+      - name: State and logs
+        if: always()
+        run: |
+          cat out/trace.log 2>/dev/null || echo "no trace log"
+          cat "$HOME/.pdfview/state.json" 2>/dev/null | tee out/state.json || echo "no state file"
+          ls "$HOME/Library/Logs/DiagnosticReports" 2>/dev/null | grep -i pdfview || echo "no crash reports"
+          cp "$HOME/Library/Logs/DiagnosticReports"/pdfview* out/ 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mac-test
+          path: out
